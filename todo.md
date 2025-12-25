@@ -56,3 +56,5 @@
 ## Bug Fixes (Round 2)
 - [x] Fix email validation error when adding driver without email
 - [x] Fix driver portal login redirect to dashboard (same cookie issue as admin)
+- [x] Verify driver portal login redirect logic is working correctly
+- [x] Fix circular import issue with auth token constants

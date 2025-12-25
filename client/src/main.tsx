@@ -7,10 +7,7 @@ import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
-
-// Storage keys for session tokens
-export const ADMIN_TOKEN_KEY = 'admin_session_token';
-export const DRIVER_TOKEN_KEY = 'driver_session_token';
+import { ADMIN_TOKEN_KEY, DRIVER_TOKEN_KEY } from "@/lib/auth-constants";
 
 const queryClient = new QueryClient();
 

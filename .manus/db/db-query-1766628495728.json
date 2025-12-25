@@ -1,0 +1,16 @@
+{
+  "query": "SELECT id, name, phone, loginCode FROM drivers WHERE status = 'active' LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT id, name, phone, loginCode FROM drivers WHERE status = 'active' LIMIT 1;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Test Driver",
+      "phone": "5551234567",
+      "loginCode": "842860"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tphone\tloginCode\n1\tTest Driver\t5551234567\t842860\n",
+  "stderr": "",
+  "execution_time_ms": 63
+}

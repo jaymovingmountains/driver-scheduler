@@ -1,0 +1,37 @@
+{
+  "query": "SELECT id, name, phone, email, status, loginCode, loginCodeExpiry FROM drivers LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT id, name, phone, email, status, loginCode, loginCodeExpiry FROM drivers LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Test Driver",
+      "phone": "5551234567",
+      "email": "testdriver@example.com",
+      "status": "active",
+      "loginCode": "842860",
+      "loginCodeExpiry": "2025-12-26 01:38:34"
+    },
+    {
+      "id": "2",
+      "name": "Jay",
+      "phone": "2365654019",
+      "email": "NULL",
+      "status": "pending",
+      "loginCode": "918468",
+      "loginCodeExpiry": "2025-12-25 01:58:04"
+    },
+    {
+      "id": "30001",
+      "name": "Jay",
+      "phone": "+12365654019",
+      "email": "jay@movingmountainslogistics.com",
+      "status": "active",
+      "loginCode": "NULL",
+      "loginCodeExpiry": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tphone\temail\tstatus\tloginCode\tloginCodeExpiry\n1\tTest Driver\t5551234567\ttestdriver@example.com\tactive\t842860\t2025-12-26 01:38:34\n2\tJay\t2365654019\tNULL\tpending\t918468\t2025-12-25 01:58:04\n30001\tJay\t+12365654019\tjay@movingmountainslogistics.com\tactive\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { DRIVER_TOKEN_KEY } from "@/main";
+import { DRIVER_TOKEN_KEY } from "@/lib/auth-constants";
 
 export default function DriverPortal() {
   const { data: driver, isLoading, refetch } = trpc.driverAuth.me.useQuery();

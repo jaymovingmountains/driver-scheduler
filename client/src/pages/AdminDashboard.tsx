@@ -49,6 +49,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
+import { ADMIN_TOKEN_KEY } from "@/lib/auth-constants";
 import {
   Bell,
   Calendar,
@@ -259,7 +260,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     onSuccess: async (data) => {
       // Store token in localStorage for Authorization header
       if (data.token) {
-        localStorage.setItem('admin_session_token', data.token);
+        localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
       }
       toast.success("Welcome back!");
       // Force refetch the me query to get the updated session
@@ -365,7 +366,7 @@ function AdminContent({
   const logoutMutation = trpc.adminAuth.logout.useMutation({
     onSuccess: () => {
       // Clear token from localStorage
-      localStorage.removeItem('admin_session_token');
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
       toast.success("Signed out");
       onLogout();
     },
