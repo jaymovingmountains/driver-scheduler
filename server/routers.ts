@@ -10,6 +10,21 @@ import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCod
 const ADMIN_COOKIE_NAME = 'admin_session';
 const DRIVER_COOKIE_NAME = 'driver_session';
 
+// Helper to get driver token from cookie or header
+function getDriverToken(ctx: { req: { cookies?: Record<string, string>; headers: Record<string, string | string[] | undefined> } }): string | null {
+  // Check cookie first
+  let token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+  if (token) return token;
+  
+  // Then check x-driver-token header (for preview environment)
+  const headerToken = ctx.req.headers['x-driver-token'];
+  if (typeof headerToken === 'string') {
+    return headerToken;
+  }
+  
+  return null;
+}
+
 // Helper to generate 6-digit code
 function generateLoginCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -496,7 +511,7 @@ export const appRouter = router({
         endDate: z.string().optional(),
       }))
       .query(async ({ ctx, input }) => {
-        const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+        const token = getDriverToken(ctx);
         if (!token) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
@@ -515,7 +530,7 @@ export const appRouter = router({
         endDate: z.string(),
       }))
       .query(async ({ ctx, input }) => {
-        const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+        const token = getDriverToken(ctx);
         if (!token) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
@@ -534,7 +549,7 @@ export const appRouter = router({
         isAvailable: z.boolean(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+        const token = getDriverToken(ctx);
         if (!token) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
@@ -555,7 +570,7 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+        const token = getDriverToken(ctx);
         if (!token) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
@@ -585,7 +600,7 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+        const token = getDriverToken(ctx);
         if (!token) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }

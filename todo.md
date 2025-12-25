@@ -58,3 +58,6 @@
 - [x] Fix driver portal login redirect to dashboard (same cookie issue as admin)
 - [x] Verify driver portal login redirect logic is working correctly
 - [x] Fix circular import issue with auth token constants
+
+## Bug Fixes (Round 3)
+- [x] Fix driver token not being sent with API requests after login (updated all driverPortal routes to check x-driver-token header)
