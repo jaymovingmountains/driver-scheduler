@@ -64,13 +64,17 @@ import {
   MessageSquare,
   MoreHorizontal,
   PanelLeft,
+  Pencil,
   Phone,
   Plus,
   RefreshCw,
   Route,
+  Search,
   Shield,
   Trash2,
   Truck,
+  UserCheck,
+  UserMinus,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -632,11 +636,27 @@ function DashboardPage() {
 // Drivers Page Component
 function DriversPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [inviteForm, setInviteForm] = useState({ name: "", phone: "", email: "" });
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", status: "active" as "active" | "inactive" | "pending" });
   const [lastLoginCode, setLastLoginCode] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const utils = trpc.useUtils();
   const { data: drivers, isLoading } = trpc.drivers.list.useQuery();
+
+  // Filter drivers based on search and status
+  const filteredDrivers = drivers?.filter((driver) => {
+    const matchesSearch = 
+      driver.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      driver.phone.includes(searchQuery) ||
+      (driver.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+    const matchesStatus = statusFilter === "all" || driver.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const inviteMutation = trpc.drivers.invite.useMutation({
     onSuccess: (data) => {
@@ -650,9 +670,23 @@ function DriversPage() {
     },
   });
 
+  const updateMutation = trpc.drivers.update.useMutation({
+    onSuccess: () => {
+      toast.success("Driver updated successfully");
+      setShowEditDialog(false);
+      setSelectedDriver(null);
+      utils.drivers.list.invalidate();
+    },
+    onError: (error) => {
+      toast.error("Failed to update driver", { description: error.message });
+    },
+  });
+
   const deleteMutation = trpc.drivers.delete.useMutation({
     onSuccess: () => {
       toast.success("Driver removed");
+      setShowDeleteConfirm(false);
+      setSelectedDriver(null);
       utils.drivers.list.invalidate();
     },
     onError: (error) => {
@@ -665,6 +699,7 @@ function DriversPage() {
       toast.success("Invitation resent", {
         description: `New login code: ${data.loginCode}`,
       });
+      utils.drivers.list.invalidate();
     },
     onError: (error) => {
       toast.error("Failed to resend invitation", { description: error.message });
@@ -675,24 +710,151 @@ function DriversPage() {
     inviteMutation.mutate(inviteForm);
   };
 
+  const handleEdit = (driver: any) => {
+    setSelectedDriver(driver);
+    setEditForm({
+      name: driver.name,
+      phone: driver.phone,
+      email: driver.email || "",
+      status: driver.status,
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleUpdate = () => {
+    if (!selectedDriver) return;
+    updateMutation.mutate({
+      id: selectedDriver.id,
+      name: editForm.name,
+      phone: editForm.phone,
+      email: editForm.email || null,
+      status: editForm.status,
+    });
+  };
+
+  const handleDeleteClick = (driver: any) => {
+    setSelectedDriver(driver);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!selectedDriver) return;
+    deleteMutation.mutate({ id: selectedDriver.id });
+  };
+
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     toast.success("Code copied to clipboard");
   };
 
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "active":
+        return "default";
+      case "pending":
+        return "secondary";
+      case "inactive":
+        return "outline";
+      default:
+        return "outline";
+    }
+  };
+
+  // Stats
+  const totalDrivers = drivers?.length || 0;
+  const activeDrivers = drivers?.filter((d) => d.status === "active").length || 0;
+  const pendingDrivers = drivers?.filter((d) => d.status === "pending").length || 0;
+  const inactiveDrivers = drivers?.filter((d) => d.status === "inactive").length || 0;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Drivers</h1>
           <p className="text-muted-foreground">Manage your delivery drivers</p>
         </div>
         <Button onClick={() => setShowInviteDialog(true)}>
           <UserPlus className="h-4 w-4 mr-2" />
-          Invite Driver
+          Add Driver
         </Button>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{totalDrivers}</p>
+              <p className="text-xs text-muted-foreground">Total Drivers</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{activeDrivers}</p>
+              <p className="text-xs text-muted-foreground">Active</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <RefreshCw className="h-5 w-5 text-yellow-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{pendingDrivers}</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gray-100 rounded-lg">
+              <UserMinus className="h-5 w-5 text-gray-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{inactiveDrivers}</p>
+              <p className="text-xs text-muted-foreground">Inactive</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Search and Filter */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, phone, or email..."
+              className="pl-10"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </Card>
+
+      {/* Drivers Table */}
       <Card>
         <Table>
           <TableHeader>
@@ -701,60 +863,59 @@ function DriversPage() {
               <TableHead>Phone</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[80px]">Actions</TableHead>
+              <TableHead className="w-[100px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8">
-                  Loading...
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                 </TableCell>
               </TableRow>
-            ) : drivers?.length === 0 ? (
+            ) : filteredDrivers?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  No drivers yet. Invite your first driver to get started.
+                  {searchQuery || statusFilter !== "all"
+                    ? "No drivers match your search criteria."
+                    : "No drivers yet. Add your first driver to get started."}
                 </TableCell>
               </TableRow>
             ) : (
-              drivers?.map((driver) => (
+              filteredDrivers?.map((driver) => (
                 <TableRow key={driver.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs">{driver.name.charAt(0)}</AvatarFallback>
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback className="text-sm bg-primary/10 text-primary">
+                          {driver.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                        </AvatarFallback>
                       </Avatar>
-                      <span className="font-medium">{driver.name}</span>
+                      <div>
+                        <p className="font-medium">{driver.name}</p>
+                        <p className="text-xs text-muted-foreground">ID: {driver.id}</p>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Phone className="h-3 w-3 text-muted-foreground" />
-                      {driver.phone}
+                      <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span>{driver.phone}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     {driver.email ? (
                       <div className="flex items-center gap-2">
-                        <Mail className="h-3 w-3 text-muted-foreground" />
-                        {driver.email}
+                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="truncate max-w-[200px]">{driver.email}</span>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-muted-foreground">Not provided</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      variant={
-                        driver.status === "active"
-                          ? "default"
-                          : driver.status === "pending"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {driver.status}
+                    <Badge variant={getStatusBadgeVariant(driver.status)}>
+                      {driver.status.charAt(0).toUpperCase() + driver.status.slice(1)}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -765,14 +926,34 @@ function DriversPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEdit(driver)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit Details
+                        </DropdownMenuItem>
                         {driver.status === "pending" && (
                           <DropdownMenuItem onClick={() => resendMutation.mutate({ id: driver.id })}>
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Resend Invite
                           </DropdownMenuItem>
                         )}
+                        {driver.status === "active" && (
+                          <DropdownMenuItem
+                            onClick={() => updateMutation.mutate({ id: driver.id, status: "inactive" })}
+                          >
+                            <UserMinus className="h-4 w-4 mr-2" />
+                            Deactivate
+                          </DropdownMenuItem>
+                        )}
+                        {driver.status === "inactive" && (
+                          <DropdownMenuItem
+                            onClick={() => updateMutation.mutate({ id: driver.id, status: "active" })}
+                          >
+                            <UserCheck className="h-4 w-4 mr-2" />
+                            Activate
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
-                          onClick={() => deleteMutation.mutate({ id: driver.id })}
+                          onClick={() => handleDeleteClick(driver)}
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
@@ -788,27 +969,35 @@ function DriversPage() {
         </Table>
       </Card>
 
-      {/* Invite Dialog */}
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+      {/* Add Driver Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={(open) => {
+        setShowInviteDialog(open);
+        if (!open) {
+          setLastLoginCode(null);
+          setInviteForm({ name: "", phone: "", email: "" });
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite New Driver</DialogTitle>
+            <DialogTitle>Add New Driver</DialogTitle>
             <DialogDescription>
-              Send an invitation to a new driver. They'll receive a login code.
+              Add a new driver to your team. They'll receive a login code to access the driver portal.
             </DialogDescription>
           </DialogHeader>
           {lastLoginCode ? (
             <div className="space-y-4 py-4">
-              <div className="p-4 bg-green-50 rounded-lg text-center">
-                <p className="text-sm text-muted-foreground mb-2">Driver Login Code</p>
-                <div className="flex items-center justify-center gap-2">
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                <Check className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                <p className="font-medium text-green-800 mb-1">Driver Added Successfully!</p>
+                <p className="text-sm text-muted-foreground mb-3">Share this login code with the driver:</p>
+                <div className="flex items-center justify-center gap-2 bg-white p-3 rounded-md border">
                   <span className="text-3xl font-mono font-bold tracking-widest">{lastLoginCode}</span>
                   <Button variant="ghost" size="icon" onClick={() => copyCode(lastLoginCode)}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Share this code with the driver to let them sign in
+                <p className="text-xs text-muted-foreground mt-3">
+                  The driver can use this code with their phone number to sign in
                 </p>
               </div>
               <Button
@@ -816,57 +1005,174 @@ function DriversPage() {
                 onClick={() => {
                   setLastLoginCode(null);
                   setShowInviteDialog(false);
+                  setInviteForm({ name: "", phone: "", email: "" });
                 }}
               >
                 Done
               </Button>
             </div>
           ) : (
-            <>
+            <form onSubmit={(e) => { e.preventDefault(); handleInvite(); }}>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="invite-name">Full Name *</Label>
                   <Input
-                    id="name"
+                    id="invite-name"
                     placeholder="John Doe"
                     value={inviteForm.name}
                     onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                    required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label htmlFor="invite-phone">Phone Number *</Label>
                   <Input
-                    id="phone"
+                    id="invite-phone"
                     type="tel"
                     placeholder="(555) 123-4567"
                     value={inviteForm.phone}
                     onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                    required
                   />
+                  <p className="text-xs text-muted-foreground">Driver will use this to sign in</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email (optional)</Label>
+                  <Label htmlFor="invite-email">Email (optional)</Label>
                   <Input
-                    id="email"
+                    id="invite-email"
                     type="email"
                     placeholder="driver@example.com"
                     value={inviteForm.email}
                     onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
                   />
+                  <p className="text-xs text-muted-foreground">Used for sending notifications</p>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
+                <Button type="button" variant="outline" onClick={() => setShowInviteDialog(false)}>
                   Cancel
                 </Button>
                 <Button
-                  onClick={handleInvite}
+                  type="submit"
                   disabled={!inviteForm.name || !inviteForm.phone || inviteMutation.isPending}
                 >
-                  {inviteMutation.isPending ? "Inviting..." : "Send Invitation"}
+                  {inviteMutation.isPending ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Adding...</>
+                  ) : (
+                    "Add Driver"
+                  )}
                 </Button>
               </DialogFooter>
-            </>
+            </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Driver Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={(open) => {
+        setShowEditDialog(open);
+        if (!open) setSelectedDriver(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Driver</DialogTitle>
+            <DialogDescription>
+              Update driver information and status.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); handleUpdate(); }}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Full Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone Number</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select
+                  value={editForm.status}
+                  onValueChange={(value: "active" | "inactive" | "pending") =>
+                    setEditForm({ ...editForm, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={(open) => {
+        setShowDeleteConfirm(open);
+        if (!open) setSelectedDriver(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Driver</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{selectedDriver?.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Removing...</>
+              ) : (
+                "Remove Driver"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

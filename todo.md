@@ -44,3 +44,11 @@
 ## Bug Fixes
 - [x] Fix redirect after successful admin login
 - [x] Fix cookie-based auth for preview environment (use localStorage + Authorization header)
+
+## Driver Management Page Enhancement
+- [x] Driver list view with search and filter
+- [x] Add new driver form (name, phone, email)
+- [x] Edit driver details
+- [x] Invite driver via email with login code
+- [x] View driver status (active/inactive/pending)
+- [x] Delete/deactivate driver functionality
