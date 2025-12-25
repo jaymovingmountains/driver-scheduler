@@ -47,17 +47,20 @@ const trpcClient = trpc.createClient({
       url: "/api/trpc",
       transformer: superjson,
       headers() {
-        // Include auth token from localStorage if available
+        // Include auth tokens from localStorage if available
         const adminToken = localStorage.getItem(ADMIN_TOKEN_KEY);
         const driverToken = localStorage.getItem(DRIVER_TOKEN_KEY);
-        const token = adminToken || driverToken;
         
-        if (token) {
-          return {
-            Authorization: `Bearer ${token}`,
-          };
+        const headers: Record<string, string> = {};
+        
+        if (adminToken) {
+          headers['Authorization'] = `Bearer ${adminToken}`;
         }
-        return {};
+        if (driverToken) {
+          headers['x-driver-token'] = driverToken;
+        }
+        
+        return headers;
       },
       fetch(input, init) {
         return globalThis.fetch(input, {

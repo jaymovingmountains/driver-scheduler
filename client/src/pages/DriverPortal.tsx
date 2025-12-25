@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { DRIVER_TOKEN_KEY } from "@/main";
 
 export default function DriverPortal() {
   const { data: driver, isLoading, refetch } = trpc.driverAuth.me.useQuery();
@@ -70,10 +71,19 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
     },
   });
 
+  const utils = trpc.useUtils();
+
   const verifyCodeMutation = trpc.driverAuth.verifyCode.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Store token in localStorage for preview environment
+      if (data.token) {
+        localStorage.setItem(DRIVER_TOKEN_KEY, data.token);
+      }
       toast.success("Welcome back!");
-      onSuccess();
+      // Invalidate and refetch
+      utils.driverAuth.me.invalidate().then(() => {
+        onSuccess();
+      });
     },
     onError: (error) => {
       toast.error("Invalid code", { description: error.message });
@@ -184,6 +194,8 @@ function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => vo
   
   const logoutMutation = trpc.driverAuth.logout.useMutation({
     onSuccess: () => {
+      // Clear token from localStorage
+      localStorage.removeItem(DRIVER_TOKEN_KEY);
       toast.success("Signed out");
       onLogout();
     },

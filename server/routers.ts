@@ -203,11 +203,19 @@ export const appRouter = router({
           maxAge: 30 * 24 * 60 * 60 * 1000,
         });
         
-        return { success: true, driver: { id: driver.id, name: driver.name, phone: driver.phone } };
+        // Return token for client-side storage (for preview environment)
+        return { success: true, token, driver: { id: driver.id, name: driver.name, phone: driver.phone } };
       }),
 
     me: publicProcedure.query(async ({ ctx }) => {
-      const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+      // Check cookie first, then Authorization header (for preview environment)
+      let token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
+      if (!token) {
+        const authHeader = ctx.req.headers['x-driver-token'];
+        if (typeof authHeader === 'string') {
+          token = authHeader;
+        }
+      }
       if (!token) return null;
       
       const driver = await db.getDriverBySessionToken(token);
