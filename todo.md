@@ -77,3 +77,8 @@
 ## Form Updates
 - [x] Make email field required in Add Driver form (frontend validation)
 - [x] Make email field required in server validation
+
+## OAuth Cleanup
+- [x] Remove OAuth login page from home page
+- [x] Disable global OAuth redirect on unauthorized errors
+- [x] Make home page and driver portal publicly accessible
