@@ -61,3 +61,15 @@
 
 ## Bug Fixes (Round 3)
 - [x] Fix driver token not being sent with API requests after login (updated all driverPortal routes to check x-driver-token header)
+
+## Twilio Integration (Cancelled)
+- [x] Install Twilio SDK
+- [x] Update notifications service to use Twilio instead of Textbelt
+- [ ] ~~Request Twilio credentials~~ - Cancelled, switching to email-only
+- [ ] ~~Test SMS delivery~~ - Cancelled
+
+## Email-Only Login
+- [x] Remove SMS dependency from login flow
+- [x] Update driver login to use email for codes
+- [x] Update notifications to email-only for route assignments
+- [x] Remove Twilio dependency

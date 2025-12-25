@@ -191,11 +191,11 @@ export const appRouter = router({
         const code = generateLoginCode();
         await db.setDriverLoginCode(driver.id, code, 10);
         
-        const { emailSent, smsSent } = await sendLoginCode(driver.phone, driver.email, code);
+        const emailSent = driver.email ? await sendLoginCode(driver.email, code) : false;
         
         return { 
           success: true, 
-          message: smsSent ? 'Code sent via SMS' : (emailSent ? 'Code sent via email' : 'Code generated (notifications not configured)'),
+          message: emailSent ? 'Code sent via email' : 'Code generated (email not configured for this driver)',
         };
       }),
 
@@ -342,10 +342,7 @@ export const appRouter = router({
         sms: z.boolean().default(true),
       }))
       .mutation(async ({ input }) => {
-        const result = await notifyDriver(input.id, input.subject, input.message, {
-          email: input.email,
-          sms: input.sms,
-        });
+        const result = await notifyDriver(input.id, input.subject, input.message);
         return result;
       }),
   }),

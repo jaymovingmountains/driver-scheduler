@@ -1,18 +1,12 @@
 import { createNotificationLog, updateNotificationLog, getDriverById } from './db';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const TEXTBELT_API_KEY = process.env.TEXTBELT_API_KEY || 'textbelt'; // 'textbelt' is the free tier key
 
 interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
   text?: string;
-}
-
-interface SendSmsParams {
-  to: string;
-  message: string;
 }
 
 /**
@@ -46,6 +40,7 @@ export async function sendEmail({ to, subject, html, text }: SendEmailParams): P
       return false;
     }
 
+    console.log('[Email] Sent successfully to:', to);
     return true;
   } catch (error) {
     console.error('[Email] Error:', error);
@@ -54,62 +49,23 @@ export async function sendEmail({ to, subject, html, text }: SendEmailParams): P
 }
 
 /**
- * Send SMS via Textbelt API (free tier: 1 SMS/day per IP)
- */
-export async function sendSms({ to, message }: SendSmsParams): Promise<boolean> {
-  try {
-    // Format phone number (remove non-digits, ensure country code)
-    let phone = to.replace(/\D/g, '');
-    if (phone.length === 10) {
-      phone = '1' + phone; // Add US country code
-    }
-
-    const response = await fetch('https://textbelt.com/text', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        phone,
-        message,
-        key: TEXTBELT_API_KEY,
-      }),
-    });
-
-    const result = await response.json();
-    
-    if (!result.success) {
-      console.error('[SMS] Failed to send:', result.error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('[SMS] Error:', error);
-    return false;
-  }
-}
-
-/**
- * Send notification to driver via email and/or SMS
+ * Send notification to driver via email
  */
 export async function notifyDriver(
   driverId: number,
   subject: string,
-  message: string,
-  options: { email?: boolean; sms?: boolean } = { email: true, sms: true }
-): Promise<{ emailSent: boolean; smsSent: boolean }> {
+  message: string
+): Promise<{ emailSent: boolean }> {
   const driver = await getDriverById(driverId);
   if (!driver) {
     console.error('[Notify] Driver not found:', driverId);
-    return { emailSent: false, smsSent: false };
+    return { emailSent: false };
   }
 
   let emailSent = false;
-  let smsSent = false;
 
-  // Send email if driver has email and email is enabled
-  if (options.email && driver.email) {
+  // Send email if driver has email
+  if (driver.email) {
     const logId = await createNotificationLog({
       driverId,
       type: 'email',
@@ -136,30 +92,11 @@ export async function notifyDriver(
       sentAt: emailSent ? new Date() : undefined,
       errorMessage: emailSent ? undefined : 'Failed to send email',
     });
+  } else {
+    console.warn('[Notify] Driver has no email address:', driverId);
   }
 
-  // Send SMS if driver has phone and SMS is enabled
-  if (options.sms && driver.phone) {
-    const logId = await createNotificationLog({
-      driverId,
-      type: 'sms',
-      message,
-      status: 'pending',
-    });
-
-    smsSent = await sendSms({
-      to: driver.phone,
-      message: `${subject}\n\n${message}`,
-    });
-
-    await updateNotificationLog(logId, {
-      status: smsSent ? 'sent' : 'failed',
-      sentAt: smsSent ? new Date() : undefined,
-      errorMessage: smsSent ? undefined : 'Failed to send SMS',
-    });
-  }
-
-  return { emailSent, smsSent };
+  return { emailSent };
 }
 
 /**
@@ -170,7 +107,7 @@ export async function notifyRouteAssignment(
   routeType: string,
   date: string,
   vanName?: string
-): Promise<{ emailSent: boolean; smsSent: boolean }> {
+): Promise<{ emailSent: boolean }> {
   const formattedDate = new Date(date).toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -216,7 +153,6 @@ export async function sendDriverInvitation(
       </div>
       
       <p style="color: #333; line-height: 1.6;">Use your phone number and this code to log in to the Driver Portal.</p>
-      <p style="color: #666; font-size: 14px;">This code will expire in 24 hours. After your first login, you can request a new code anytime.</p>
       
       <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
       <p style="color: #666; font-size: 12px;">Driver Scheduling System</p>
@@ -227,39 +163,33 @@ export async function sendDriverInvitation(
 }
 
 /**
- * Send login code to driver
+ * Send login code to driver via email
  */
 export async function sendLoginCode(
-  phone: string,
-  email: string | null,
+  email: string,
   loginCode: string
-): Promise<{ emailSent: boolean; smsSent: boolean }> {
-  let emailSent = false;
-  let smsSent = false;
-
-  const message = `Your Driver Portal login code is: ${loginCode}\n\nThis code expires in 10 minutes.`;
-
-  // Try SMS first
-  smsSent = await sendSms({ to: phone, message });
-
-  // Also send email if available
-  if (email) {
-    emailSent = await sendEmail({
-      to: email,
-      subject: 'Your Login Code',
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1a1a1a;">Your Login Code</h2>
-          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
-            <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1a1a1a;">
-              ${loginCode}
-            </div>
-          </div>
-          <p style="color: #666; font-size: 14px;">This code expires in 10 minutes.</p>
-        </div>
-      `,
-    });
+): Promise<boolean> {
+  if (!email) {
+    console.warn('[Email] No email address provided for login code');
+    return false;
   }
 
-  return { emailSent, smsSent };
+  return sendEmail({
+    to: email,
+    subject: 'Your Driver Portal Login Code',
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a1a;">Your Login Code</h2>
+        <p style="color: #333; line-height: 1.6;">Use this code to log in to the Driver Portal:</p>
+        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+          <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1a1a1a;">
+            ${loginCode}
+          </div>
+        </div>
+        <p style="color: #666; font-size: 14px;">This code expires in 10 minutes.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #666; font-size: 12px;">Driver Scheduling System</p>
+      </div>
+    `,
+  });
 }
