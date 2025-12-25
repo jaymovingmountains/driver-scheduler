@@ -1,0 +1,36 @@
+# Driver Scheduling System - TODO
+
+## Database & Schema
+- [x] Drivers table (name, phone, email, status, login code)
+- [x] Availability table (driver, date, available status)
+- [x] Routes table (type: regular/big-box/out-of-town, driver, date, van)
+- [x] Route assignments with 24-hour notice validation
+- [x] Notification logs table
+
+## Admin Features
+- [x] Admin authentication (single admin login)
+- [x] Admin dashboard layout
+- [x] Driver invitation via email
+- [x] Driver management (view, edit, remove)
+- [x] Route assignment interface
+- [x] 24-hour advance notice validation
+- [x] Send notifications (email + SMS)
+
+## Driver Features
+- [x] Driver phone/code login (passwordless)
+- [x] Two-week availability calendar
+- [x] Mark available days
+- [x] Van selection dropdown (T1-T6, Z1-Z5, M1)
+- [x] View assigned routes
+- [x] Driver work logging
+
+## Notifications
+- [x] Resend email integration
+- [x] Textbelt SMS integration (free tier)
+- [x] Route assignment notifications
+- [x] Route update notifications
+
+## Route Types
+- [x] Regular routes (daily)
+- [x] Big Box routes (once per week per driver)
+- [x] Out of Town routes (once per week per driver)

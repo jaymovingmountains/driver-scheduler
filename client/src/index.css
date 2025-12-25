@@ -175,3 +175,75 @@
     }
   }
 }
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.8 0 0);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.7 0 0);
+}
+
+/* Status badges */
+.status-active {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-inactive {
+  @apply bg-gray-100 text-gray-800;
+}
+
+.status-pending {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+/* Route type badges */
+.route-regular {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.route-big-box {
+  @apply bg-orange-100 text-orange-800;
+}
+
+.route-out-of-town {
+  @apply bg-purple-100 text-purple-800;
+}
+
+/* Calendar availability styles */
+.day-available {
+  @apply bg-green-100 hover:bg-green-200 border-green-300;
+}
+
+.day-unavailable {
+  @apply bg-red-100 hover:bg-red-200 border-red-300;
+}
+
+.day-unset {
+  @apply bg-gray-50 hover:bg-gray-100 border-gray-200;
+}
+
+/* Animation for loading states */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}

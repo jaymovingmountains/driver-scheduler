@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO vans (name, isActive, createdAt) VALUES \n('T1', true, NOW()),\n('T2', true, NOW()),\n('T3', true, NOW()),\n('T4', true, NOW()),\n('T5', true, NOW()),\n('T6', true, NOW()),\n('Z1', true, NOW()),\n('Z2', true, NOW()),\n('Z3', true, NOW()),\n('Z4', true, NOW()),\n('Z5', true, NOW()),\n('M1', true, NOW())\nON DUPLICATE KEY UPDATE isActive = true;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute INSERT INTO vans (name, isActive, createdAt) VALUES \n('T1', true, NOW()),\n('T2', true, NOW()),\n('T3', true, NOW()),\n('T4', true, NOW()),\n('T5', true, NOW()),\n('T6', true, NOW()),\n('Z1', true, NOW()),\n('Z2', true, NOW()),\n('Z3', true, NOW()),\n('Z4', true, NOW()),\n('Z5', true, NOW()),\n('M1', true, NOW())\nON DUPLICATE KEY UPDATE isActive = true;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 122
+}
