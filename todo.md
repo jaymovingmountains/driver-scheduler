@@ -40,3 +40,6 @@
 - [x] Remove OAuth dependency for admin login
 - [x] Implement simple username/password admin authentication
 - [x] Update admin dashboard to use new auth
+
+## Bug Fixes
+- [x] Fix redirect after successful admin login

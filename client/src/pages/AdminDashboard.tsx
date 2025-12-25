@@ -98,8 +98,14 @@ export default function AdminDashboard() {
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   
-  const { data: admin, isLoading, refetch } = trpc.adminAuth.me.useQuery();
+  const utils = trpc.useUtils();
+  const { data: admin, isLoading } = trpc.adminAuth.me.useQuery();
   const { data: adminExists, isLoading: checkingExists } = trpc.adminAuth.exists.useQuery();
+  
+  const handleAuthSuccess = async () => {
+    await utils.adminAuth.me.invalidate();
+    await utils.adminAuth.exists.invalidate();
+  };
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -111,12 +117,12 @@ export default function AdminDashboard() {
 
   // Show setup form if no admin exists yet
   if (!adminExists) {
-    return <AdminSetup onSuccess={() => refetch()} />;
+    return <AdminSetup onSuccess={handleAuthSuccess} />;
   }
 
   // Show login form if not authenticated
   if (!admin) {
-    return <AdminLogin onSuccess={() => refetch()} />;
+    return <AdminLogin onSuccess={handleAuthSuccess} />;
   }
 
   return (
@@ -131,7 +137,7 @@ export default function AdminDashboard() {
         admin={admin} 
         sidebarWidth={sidebarWidth} 
         setSidebarWidth={setSidebarWidth}
-        onLogout={() => refetch()}
+        onLogout={handleAuthSuccess}
       />
     </SidebarProvider>
   );
