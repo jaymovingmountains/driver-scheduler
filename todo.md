@@ -52,3 +52,6 @@
 - [x] Invite driver via email with login code
 - [x] View driver status (active/inactive/pending)
 - [x] Delete/deactivate driver functionality
+
+## Bug Fixes (Round 2)
+- [x] Fix email validation error when adding driver without email

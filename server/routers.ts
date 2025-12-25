@@ -246,7 +246,7 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(1),
         phone: z.string().min(10),
-        email: z.string().email().optional(),
+        email: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
       }))
       .mutation(async ({ input }) => {
         const existing = await db.getDriverByPhone(input.phone);
