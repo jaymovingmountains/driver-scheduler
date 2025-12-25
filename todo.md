@@ -43,3 +43,4 @@
 
 ## Bug Fixes
 - [x] Fix redirect after successful admin login
+- [x] Fix cookie-based auth for preview environment (use localStorage + Authorization header)

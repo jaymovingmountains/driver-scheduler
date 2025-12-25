@@ -1,0 +1,42 @@
+{
+  "query": "SELECT id, adminId, token, expiresAt, NOW() as currentTime, expiresAt > NOW() as isValid FROM admin_sessions ORDER BY createdAt DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT id, adminId, token, expiresAt, NOW() as currentTime, expiresAt > NOW() as isValid FROM admin_sessions ORDER BY createdAt DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "30004",
+      "adminId": "3",
+      "token": "B5CYO6wyiweDGi_b4u2J1yHoXAuyGq-0vooiBcieUVv3l6RoGbYZIsbjwTiZU_21",
+      "expiresAt": "2026-01-01 01:23:25",
+      "currentTime": "2025-12-25 01:23:55",
+      "isValid": "1"
+    },
+    {
+      "id": "30003",
+      "adminId": "3",
+      "token": "K_tWIxAjuGs-a2QIXlua8eAkv-hjXn1IjAKIvKaOy_YssobGHoVbaZ4rtJWxD3ys",
+      "expiresAt": "2026-01-01 01:22:46",
+      "currentTime": "2025-12-25 01:23:55",
+      "isValid": "1"
+    },
+    {
+      "id": "30002",
+      "adminId": "3",
+      "token": "3vHnoYLKPplAvYYndrIrrdanOIkGWp0QDxGSUt62e0AvRkWLfOrAEduVhW7aWcZN",
+      "expiresAt": "2026-01-01 01:22:09",
+      "currentTime": "2025-12-25 01:23:55",
+      "isValid": "1"
+    },
+    {
+      "id": "30001",
+      "adminId": "3",
+      "token": "l-V9uzI5o-_UfOVcB3golf5w4NsQZ4SwBQUsibos8BfwV9HT8pS-_pM-dD74-Vye",
+      "expiresAt": "2026-01-01 01:21:30",
+      "currentTime": "2025-12-25 01:23:55",
+      "isValid": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tadminId\ttoken\texpiresAt\tcurrentTime\tisValid\n30004\t3\tB5CYO6wyiweDGi_b4u2J1yHoXAuyGq-0vooiBcieUVv3l6RoGbYZIsbjwTiZU_21\t2026-01-01 01:23:25\t2025-12-25 01:23:55\t1\n30003\t3\tK_tWIxAjuGs-a2QIXlua8eAkv-hjXn1IjAKIvKaOy_YssobGHoVbaZ4rtJWxD3ys\t2026-01-01 01:22:46\t2025-12-25 01:23:55\t1\n30002\t3\t3vHnoYLKPplAvYYndrIrrdanOIkGWp0QDxGSUt62e0AvRkWLfOrAEduVhW7aWcZN\t2026-01-01 01:22:09\t2025-12-25 01:23:55\t1\n30001\t3\tl-V9uzI5o-_UfOVcB3golf5w4NsQZ4SwBQUsibos8BfwV9HT8pS-_pM-dD74-Vye\t2026-01-01 01:21:30\t2025-12-25 01:23:55\t1\n",
+  "stderr": "",
+  "execution_time_ms": 63
+}

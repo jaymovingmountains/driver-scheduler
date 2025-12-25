@@ -8,6 +8,10 @@ import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
+// Storage keys for session tokens
+export const ADMIN_TOKEN_KEY = 'admin_session_token';
+export const DRIVER_TOKEN_KEY = 'driver_session_token';
+
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
@@ -42,6 +46,19 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      headers() {
+        // Include auth token from localStorage if available
+        const adminToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+        const driverToken = localStorage.getItem(DRIVER_TOKEN_KEY);
+        const token = adminToken || driverToken;
+        
+        if (token) {
+          return {
+            Authorization: `Bearer ${token}`,
+          };
+        }
+        return {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

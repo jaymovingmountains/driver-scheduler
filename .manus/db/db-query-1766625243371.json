@@ -1,0 +1,9 @@
+{
+  "query": "DELETE FROM admin_sessions; DELETE FROM admin_credentials;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute DELETE FROM admin_sessions; DELETE FROM admin_credentials;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 96
+}

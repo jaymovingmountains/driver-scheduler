@@ -249,9 +249,17 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  const utils = trpc.useUtils();
+  
   const loginMutation = trpc.adminAuth.login.useMutation({
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      // Store token in localStorage for Authorization header
+      if (data.token) {
+        localStorage.setItem('admin_session_token', data.token);
+      }
       toast.success("Welcome back!");
+      // Force refetch the me query to get the updated session
+      await utils.adminAuth.me.refetch();
       onSuccess();
     },
     onError: (error) => {
@@ -259,8 +267,11 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     },
   });
 
-  const handleLogin = () => {
-    loginMutation.mutate({ username, password });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (username && password && !loginMutation.isPending) {
+      loginMutation.mutate({ username, password });
+    }
   };
 
   return (
@@ -275,51 +286,53 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
             Sign in to manage drivers and routes
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              placeholder="admin"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <div className="relative">
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                id="username"
+                placeholder="admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
             </div>
-          </div>
-          <Button
-            className="w-full"
-            onClick={handleLogin}
-            disabled={!username || !password || loginMutation.isPending}
-          >
-            {loginMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Signing in...
-              </>
-            ) : (
-              "Sign In"
-            )}
-          </Button>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!username || !password || loginMutation.isPending}
+            >
+              {loginMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>
@@ -347,6 +360,8 @@ function AdminContent({
 
   const logoutMutation = trpc.adminAuth.logout.useMutation({
     onSuccess: () => {
+      // Clear token from localStorage
+      localStorage.removeItem('admin_session_token');
       toast.success("Signed out");
       onLogout();
     },

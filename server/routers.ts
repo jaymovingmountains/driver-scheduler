@@ -32,7 +32,14 @@ function getWeekBoundaries(date: Date): { start: string; end: string } {
 
 // Admin-only procedure using session-based auth
 const adminProcedure = publicProcedure.use(async ({ ctx, next }) => {
-  const token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+  // Check cookie first, then Authorization header (for preview environment)
+  let token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+  if (!token) {
+    const authHeader = ctx.req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    }
+  }
   if (!token) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Admin login required' });
   }
@@ -90,18 +97,27 @@ export const appRouter = router({
         
         const token = await db.createAdminSession(admin.id);
         
+        // Set cookie for server-side auth
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(ADMIN_COOKIE_NAME, token, {
           ...cookieOptions,
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
         
-        return { success: true, admin: { id: admin.id, username: admin.username } };
+        // Also return token for client-side storage (for preview environment)
+        return { success: true, token, admin: { id: admin.id, username: admin.username } };
       }),
 
     // Get current admin
     me: publicProcedure.query(async ({ ctx }) => {
-      const token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+      // Check cookie first, then Authorization header (for preview environment)
+      let token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+      if (!token) {
+        const authHeader = ctx.req.headers.authorization;
+        if (authHeader?.startsWith('Bearer ')) {
+          token = authHeader.slice(7);
+        }
+      }
       if (!token) return null;
       
       const session = await db.getAdminBySessionToken(token);
