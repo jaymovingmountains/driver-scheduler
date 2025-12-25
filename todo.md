@@ -73,3 +73,7 @@
 - [x] Update driver login to use email for codes
 - [x] Update notifications to email-only for route assignments
 - [x] Remove Twilio dependency
+
+## Form Updates
+- [x] Make email field required in Add Driver form (frontend validation)
+- [x] Make email field required in server validation

@@ -1038,15 +1038,16 @@ function DriversPage() {
                   <p className="text-xs text-muted-foreground">Driver will use this to sign in</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="invite-email">Email (optional)</Label>
+                  <Label htmlFor="invite-email">Email <span className="text-destructive">*</span></Label>
                   <Input
                     id="invite-email"
                     type="email"
                     placeholder="driver@example.com"
                     value={inviteForm.email}
                     onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    required
                   />
-                  <p className="text-xs text-muted-foreground">Used for sending notifications</p>
+                  <p className="text-xs text-muted-foreground">Required for sending login codes</p>
                 </div>
               </div>
               <DialogFooter>
@@ -1055,7 +1056,7 @@ function DriversPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!inviteForm.name || !inviteForm.phone || inviteMutation.isPending}
+                  disabled={!inviteForm.name || !inviteForm.phone || !inviteForm.email || inviteMutation.isPending}
                 >
                   {inviteMutation.isPending ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Adding...</>

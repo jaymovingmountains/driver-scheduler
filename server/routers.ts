@@ -269,7 +269,7 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(1),
         phone: z.string().min(10),
-        email: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
+        email: z.string().email(),
       }))
       .mutation(async ({ input }) => {
         const existing = await db.getDriverByPhone(input.phone);
@@ -281,15 +281,13 @@ export const appRouter = router({
         const driverId = await db.createDriver({
           name: input.name,
           phone: input.phone,
-          email: input.email || null,
+          email: input.email,
           loginCode: code,
           loginCodeExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
           status: 'pending',
         });
 
-        if (input.email) {
-          await sendDriverInvitation(input.email, input.name, input.phone, code);
-        }
+        await sendDriverInvitation(input.email, input.name, input.phone, code);
 
         return { success: true, driverId, loginCode: code };
       }),

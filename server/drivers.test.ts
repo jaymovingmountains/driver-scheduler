@@ -182,6 +182,7 @@ describe("drivers router", () => {
         caller.drivers.invite({
           name: "New Driver",
           phone: "5551234567",
+          email: "newdriver@example.com",
         })
       ).rejects.toThrow("Phone number already registered");
     });
