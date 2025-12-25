@@ -1,21 +1,13 @@
-import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode } from "./notifications";
 
-// Admin-only procedure
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-  }
-  return next({ ctx });
-});
-
-// Driver session cookie name
+// Cookie names
+const ADMIN_COOKIE_NAME = 'admin_session';
 const DRIVER_COOKIE_NAME = 'driver_session';
 
 // Helper to generate 6-digit code
@@ -27,7 +19,7 @@ function generateLoginCode(): string {
 function getWeekBoundaries(date: Date): { start: string; end: string } {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const start = new Date(d.setDate(diff));
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
@@ -38,21 +30,125 @@ function getWeekBoundaries(date: Date): { start: string; end: string } {
   };
 }
 
+// Admin-only procedure using session-based auth
+const adminProcedure = publicProcedure.use(async ({ ctx, next }) => {
+  const token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+  if (!token) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Admin login required' });
+  }
+  
+  const session = await db.getAdminBySessionToken(token);
+  if (!session) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired session' });
+  }
+  
+  return next({ 
+    ctx: { 
+      ...ctx, 
+      admin: session.admin 
+    } 
+  });
+});
+
 export const appRouter = router({
   system: systemRouter,
   
-  auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
+  // ============ ADMIN AUTH (Username/Password) ============
+  adminAuth: router({
+    // Check if admin exists (for initial setup)
+    exists: publicProcedure.query(async () => {
+      return db.adminExists();
+    }),
+
+    // Setup initial admin (only works if no admin exists)
+    setup: publicProcedure
+      .input(z.object({
+        username: z.string().min(3),
+        password: z.string().min(6),
+      }))
+      .mutation(async ({ input }) => {
+        const exists = await db.adminExists();
+        if (exists) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Admin already exists' });
+        }
+        
+        await db.createAdminCredential(input.username, input.password);
+        return { success: true };
+      }),
+
+    // Admin login
+    login: publicProcedure
+      .input(z.object({
+        username: z.string(),
+        password: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const admin = await db.verifyAdminPassword(input.username, input.password);
+        if (!admin) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid username or password' });
+        }
+        
+        const token = await db.createAdminSession(admin.id);
+        
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(ADMIN_COOKIE_NAME, token, {
+          ...cookieOptions,
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+        
+        return { success: true, admin: { id: admin.id, username: admin.username } };
+      }),
+
+    // Get current admin
+    me: publicProcedure.query(async ({ ctx }) => {
+      const token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+      if (!token) return null;
+      
+      const session = await db.getAdminBySessionToken(token);
+      if (!session) return null;
+      
+      return { id: session.admin.id, username: session.admin.username };
+    }),
+
+    // Admin logout
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      const token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+      if (token) {
+        await db.deleteAdminSession(token);
+      }
+      
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(ADMIN_COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      return { success: true };
+    }),
+
+    // Change password
+    changePassword: adminProcedure
+      .input(z.object({
+        currentPassword: z.string(),
+        newPassword: z.string().min(6),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const admin = await db.verifyAdminPassword((ctx as any).admin.username, input.currentPassword);
+        if (!admin) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Current password is incorrect' });
+        }
+        
+        await db.updateAdminPassword(admin.id, input.newPassword);
+        return { success: true };
+      }),
+  }),
+
+  // Keep old auth for compatibility but it won't be used
+  auth: router({
+    me: publicProcedure.query(() => null),
+    logout: publicProcedure.mutation(({ ctx }) => {
       return { success: true } as const;
     }),
   }),
 
   // ============ DRIVER AUTH ============
   driverAuth: router({
-    // Request login code
     requestCode: publicProcedure
       .input(z.object({ phone: z.string().min(10) }))
       .mutation(async ({ input }) => {
@@ -62,9 +158,8 @@ export const appRouter = router({
         }
         
         const code = generateLoginCode();
-        await db.setDriverLoginCode(driver.id, code, 10); // 10 minutes expiry
+        await db.setDriverLoginCode(driver.id, code, 10);
         
-        // Send code via SMS and email
         const { emailSent, smsSent } = await sendLoginCode(driver.phone, driver.email, code);
         
         return { 
@@ -73,7 +168,6 @@ export const appRouter = router({
         };
       }),
 
-    // Verify login code
     verifyCode: publicProcedure
       .input(z.object({ 
         phone: z.string().min(10),
@@ -85,20 +179,17 @@ export const appRouter = router({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired code' });
         }
         
-        // Create session
         const token = await db.createDriverSession(driver.id);
         
-        // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(DRIVER_COOKIE_NAME, token, {
           ...cookieOptions,
-          maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+          maxAge: 30 * 24 * 60 * 60 * 1000,
         });
         
         return { success: true, driver: { id: driver.id, name: driver.name, phone: driver.phone } };
       }),
 
-    // Get current driver from session
     me: publicProcedure.query(async ({ ctx }) => {
       const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
       if (!token) return null;
@@ -107,7 +198,6 @@ export const appRouter = router({
       return driver;
     }),
 
-    // Driver logout
     logout: publicProcedure.mutation(async ({ ctx }) => {
       const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
       if (token) {
@@ -143,7 +233,6 @@ export const appRouter = router({
         email: z.string().email().optional(),
       }))
       .mutation(async ({ input }) => {
-        // Check if phone already exists
         const existing = await db.getDriverByPhone(input.phone);
         if (existing) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Phone number already registered' });
@@ -155,11 +244,10 @@ export const appRouter = router({
           phone: input.phone,
           email: input.email || null,
           loginCode: code,
-          loginCodeExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          loginCodeExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
           status: 'pending',
         });
 
-        // Send invitation email if email provided
         if (input.email) {
           await sendDriverInvitation(input.email, input.name, input.phone, code);
         }
@@ -197,7 +285,7 @@ export const appRouter = router({
         }
 
         const code = generateLoginCode();
-        await db.setDriverLoginCode(driver.id, code, 24 * 60); // 24 hours
+        await db.setDriverLoginCode(driver.id, code, 24 * 60);
 
         if (driver.email) {
           await sendDriverInvitation(driver.email, driver.name, driver.phone, code);
@@ -255,7 +343,6 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        // Validate 24-hour notice
         const assignmentDate = new Date(input.date + 'T00:00:00');
         const now = new Date();
         const hoursDiff = (assignmentDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -267,7 +354,6 @@ export const appRouter = router({
           });
         }
 
-        // Validate special routes (once per week)
         if (input.routeType === 'big-box' || input.routeType === 'out-of-town') {
           const { start, end } = getWeekBoundaries(assignmentDate);
           const existingSpecial = await db.getDriverSpecialRoutesThisWeek(
@@ -286,7 +372,6 @@ export const appRouter = router({
           }
         }
 
-        // Check driver availability
         const availability = await db.getDriverAvailability(input.driverId, input.date, input.date);
         if (availability.length === 0 || !availability[0].isAvailable) {
           throw new TRPCError({ 
@@ -303,15 +388,7 @@ export const appRouter = router({
           notes: input.notes || null,
         });
 
-        // Get van name for notification
-        let vanName: string | undefined;
-        if (input.vanId) {
-          const vans = await db.getAllVans();
-          vanName = vans.find(v => v.id === input.vanId)?.name;
-        }
-
-        // Send notification
-        await notifyRouteAssignment(input.driverId, input.routeType, input.date, vanName);
+        await notifyRouteAssignment(input.driverId, input.routeType, input.date);
 
         return { success: true, assignmentId };
       }),
@@ -319,17 +396,12 @@ export const appRouter = router({
     update: adminProcedure
       .input(z.object({
         id: z.number(),
-        vanId: z.number().nullable().optional(),
+        vanId: z.number().optional(),
+        notes: z.string().optional(),
         status: z.enum(['assigned', 'completed', 'cancelled']).optional(),
-        notes: z.string().nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        
-        if (data.status === 'completed') {
-          (data as any).completedAt = new Date();
-        }
-        
         await db.updateRouteAssignment(id, data);
         return { success: true };
       }),
@@ -342,29 +414,77 @@ export const appRouter = router({
       }),
   }),
 
+  // ============ SCHEDULE VIEW ============
+  schedule: router({
+    byDate: adminProcedure
+      .input(z.object({ date: z.string() }))
+      .query(async ({ input }) => {
+        const available = await db.getAvailableDriversForDate(input.date);
+        const routes = await db.getAllRouteAssignments(input.date, input.date);
+        return { available, routes };
+      }),
+
+    driverAvailability: adminProcedure
+      .input(z.object({
+        driverId: z.number(),
+        startDate: z.string(),
+        endDate: z.string(),
+      }))
+      .query(async ({ input }) => {
+        return db.getDriverAvailability(input.driverId, input.startDate, input.endDate);
+      }),
+
+    allAvailability: adminProcedure
+      .input(z.object({
+        startDate: z.string(),
+        endDate: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const drivers = await db.getAllDrivers();
+        const result = [];
+        
+        for (const driver of drivers) {
+          const avail = await db.getDriverAvailability(driver.id, input.startDate, input.endDate);
+          result.push({ driver, availability: avail });
+        }
+        
+        return result;
+      }),
+  }),
+
+  // ============ NOTIFICATIONS ============
+  notifications: router({
+    list: adminProcedure
+      .input(z.object({
+        driverId: z.number().optional(),
+        limit: z.number().default(50),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getNotificationLogs(input?.driverId, input?.limit);
+      }),
+  }),
+
   // ============ DRIVER PORTAL ============
   driverPortal: router({
-    // Get driver's own routes
     myRoutes: publicProcedure
       .input(z.object({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
-      }).optional())
+      }))
       .query(async ({ ctx, input }) => {
         const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
         if (!token) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not logged in' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
         
         const driver = await db.getDriverBySessionToken(token);
         if (!driver) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Session expired' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
         }
-
-        return db.getDriverRouteAssignments(driver.id, input?.startDate, input?.endDate);
+        
+        return db.getDriverRouteAssignments(driver.id, input.startDate, input.endDate);
       }),
 
-    // Get driver's availability
     myAvailability: publicProcedure
       .input(z.object({
         startDate: z.string(),
@@ -373,18 +493,17 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
         if (!token) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not logged in' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
         
         const driver = await db.getDriverBySessionToken(token);
         if (!driver) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Session expired' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
         }
-
+        
         return db.getDriverAvailability(driver.id, input.startDate, input.endDate);
       }),
 
-    // Set availability for a date
     setAvailability: publicProcedure
       .input(z.object({
         date: z.string(),
@@ -393,19 +512,18 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
         if (!token) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not logged in' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
         
         const driver = await db.getDriverBySessionToken(token);
         if (!driver) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Session expired' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
         }
-
+        
         await db.setAvailability(driver.id, input.date, input.isAvailable);
         return { success: true };
       }),
 
-    // Update route with van selection
     updateRoute: publicProcedure
       .input(z.object({
         routeId: z.number(),
@@ -415,29 +533,27 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
         if (!token) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not logged in' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
         
         const driver = await db.getDriverBySessionToken(token);
         if (!driver) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Session expired' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
         }
-
-        // Verify the route belongs to this driver
+        
         const route = await db.getRouteAssignmentById(input.routeId);
         if (!route || route.driverId !== driver.id) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your route' });
         }
-
+        
         await db.updateRouteAssignment(input.routeId, {
           vanId: input.vanId,
           notes: input.notes,
         });
-
+        
         return { success: true };
       }),
 
-    // Mark route as completed
     completeRoute: publicProcedure
       .input(z.object({
         routeId: z.number(),
@@ -447,59 +563,26 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const token = ctx.req.cookies?.[DRIVER_COOKIE_NAME];
         if (!token) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not logged in' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
         }
         
         const driver = await db.getDriverBySessionToken(token);
         if (!driver) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Session expired' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
         }
-
-        // Verify the route belongs to this driver
+        
         const route = await db.getRouteAssignmentById(input.routeId);
         if (!route || route.driverId !== driver.id) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your route' });
         }
-
+        
         await db.updateRouteAssignment(input.routeId, {
           vanId: input.vanId,
           notes: input.notes,
           status: 'completed',
-          completedAt: new Date(),
         });
-
+        
         return { success: true };
-      }),
-  }),
-
-  // ============ ADMIN: AVAILABILITY VIEW ============
-  availability: router({
-    getForDate: adminProcedure
-      .input(z.object({ date: z.string() }))
-      .query(async ({ input }) => {
-        return db.getAvailableDriversForDate(input.date);
-      }),
-
-    getForDriver: adminProcedure
-      .input(z.object({
-        driverId: z.number(),
-        startDate: z.string(),
-        endDate: z.string(),
-      }))
-      .query(async ({ input }) => {
-        return db.getDriverAvailability(input.driverId, input.startDate, input.endDate);
-      }),
-  }),
-
-  // ============ NOTIFICATIONS ============
-  notifications: router({
-    logs: adminProcedure
-      .input(z.object({
-        driverId: z.number().optional(),
-        limit: z.number().default(50),
-      }).optional())
-      .query(async ({ input }) => {
-        return db.getNotificationLogs(input?.driverId, input?.limit || 50);
       }),
   }),
 });

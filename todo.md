@@ -34,3 +34,9 @@
 - [x] Regular routes (daily)
 - [x] Big Box routes (once per week per driver)
 - [x] Out of Town routes (once per week per driver)
+
+
+## Admin Auth Update
+- [x] Remove OAuth dependency for admin login
+- [x] Implement simple username/password admin authentication
+- [x] Update admin dashboard to use new auth

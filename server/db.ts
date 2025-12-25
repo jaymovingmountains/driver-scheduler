@@ -7,8 +7,11 @@ import {
   vans, InsertVan,
   routeAssignments, InsertRouteAssignment,
   notificationLogs, InsertNotificationLog,
-  driverSessions, InsertDriverSession
+  driverSessions, InsertDriverSession,
+  adminCredentials, InsertAdminCredential,
+  adminSessions, InsertAdminSession
 } from "../drizzle/schema";
+import bcrypt from 'bcryptjs';
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 
@@ -448,4 +451,100 @@ export async function getNotificationLogs(driverId?: number, limit: number = 50)
   return db.select().from(notificationLogs)
     .orderBy(desc(notificationLogs.createdAt))
     .limit(limit);
+}
+
+
+// ============ ADMIN AUTH HELPERS ============
+
+const SALT_ROUNDS = 10;
+
+export async function createAdminCredential(username: string, password: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  const result = await db.insert(adminCredentials).values({
+    username,
+    passwordHash,
+  });
+  return result[0].insertId;
+}
+
+export async function getAdminByUsername(username: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const result = await db.select().from(adminCredentials)
+    .where(eq(adminCredentials.username, username))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function verifyAdminPassword(username: string, password: string) {
+  const admin = await getAdminByUsername(username);
+  if (!admin) return null;
+  
+  const isValid = await bcrypt.compare(password, admin.passwordHash);
+  return isValid ? admin : null;
+}
+
+export async function updateAdminPassword(adminId: number, newPassword: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await db.update(adminCredentials)
+    .set({ passwordHash })
+    .where(eq(adminCredentials.id, adminId));
+}
+
+export async function createAdminSession(adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const token = nanoid(64);
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7 day session
+  
+  await db.insert(adminSessions).values({
+    adminId,
+    token,
+    expiresAt,
+  });
+  
+  return token;
+}
+
+export async function getAdminBySessionToken(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select({
+    session: adminSessions,
+    admin: adminCredentials,
+  })
+    .from(adminSessions)
+    .innerJoin(adminCredentials, eq(adminSessions.adminId, adminCredentials.id))
+    .where(and(
+      eq(adminSessions.token, token),
+      sql`${adminSessions.expiresAt} > NOW()`
+    ))
+    .limit(1);
+  
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function deleteAdminSession(token: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(adminSessions).where(eq(adminSessions.token, token));
+}
+
+export async function adminExists() {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const result = await db.select().from(adminCredentials).limit(1);
+  return result.length > 0;
 }

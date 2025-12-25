@@ -15,6 +15,13 @@
       "when": 1766623514558,
       "tag": "0001_giant_the_hand",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1766624363600,
+      "tag": "0002_colorful_azazel",
+      "breakpoints": true
     }
   ]
 }

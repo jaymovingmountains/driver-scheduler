@@ -1,4 +1,3 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +47,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
 import {
@@ -57,7 +55,10 @@ import {
   CalendarDays,
   Check,
   Copy,
+  Eye,
+  EyeOff,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Mail,
   MessageSquare,
@@ -67,6 +68,7 @@ import {
   Plus,
   RefreshCw,
   Route,
+  Shield,
   Trash2,
   Truck,
   UserPlus,
@@ -95,59 +97,26 @@ export default function AdminDashboard() {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { loading, user } = useAuth();
+  
+  const { data: admin, isLoading, refetch } = trpc.adminAuth.me.useQuery();
+  const { data: adminExists, isLoading: checkingExists } = trpc.adminAuth.exists.useQuery();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) {
+  if (isLoading || checkingExists) {
     return <DashboardLayoutSkeleton />;
   }
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full bg-white rounded-2xl shadow-xl">
-          <div className="p-4 bg-primary/10 rounded-full">
-            <Truck className="h-12 w-12 text-primary" />
-          </div>
-          <div className="flex flex-col items-center gap-4">
-            <h1 className="text-2xl font-bold tracking-tight text-center">
-              Driver Scheduling System
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Admin access required. Sign in to manage drivers, routes, and schedules.
-            </p>
-          </div>
-          <Button
-            onClick={() => {
-              window.location.href = getLoginUrl();
-            }}
-            size="lg"
-            className="w-full"
-          >
-            Sign in as Admin
-          </Button>
-        </div>
-      </div>
-    );
+  // Show setup form if no admin exists yet
+  if (!adminExists) {
+    return <AdminSetup onSuccess={() => refetch()} />;
   }
 
-  if (user.role !== "admin") {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-red-50 to-orange-100">
-        <div className="flex flex-col items-center gap-6 p-8 max-w-md w-full bg-white rounded-2xl shadow-xl">
-          <div className="p-4 bg-destructive/10 rounded-full">
-            <Users className="h-12 w-12 text-destructive" />
-          </div>
-          <h1 className="text-xl font-bold text-center">Access Denied</h1>
-          <p className="text-sm text-muted-foreground text-center">
-            You don't have admin privileges. Please contact the system administrator.
-          </p>
-        </div>
-      </div>
-    );
+  // Show login form if not authenticated
+  if (!admin) {
+    return <AdminLogin onSuccess={() => refetch()} />;
   }
 
   return (
@@ -158,39 +127,234 @@ export default function AdminDashboard() {
         } as CSSProperties
       }
     >
-      <AdminDashboardContent setSidebarWidth={setSidebarWidth} />
+      <AdminContent 
+        admin={admin} 
+        sidebarWidth={sidebarWidth} 
+        setSidebarWidth={setSidebarWidth}
+        onLogout={() => refetch()}
+      />
     </SidebarProvider>
   );
 }
 
-type AdminDashboardContentProps = {
-  setSidebarWidth: (width: number) => void;
-};
+// Admin Setup Component (first-time setup)
+function AdminSetup({ onSuccess }: { onSuccess: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-function AdminDashboardContent({ setSidebarWidth }: AdminDashboardContentProps) {
-  const { user, logout } = useAuth();
+  const setupMutation = trpc.adminAuth.setup.useMutation({
+    onSuccess: () => {
+      toast.success("Admin account created! Please sign in.");
+      onSuccess();
+    },
+    onError: (error) => {
+      toast.error("Setup failed", { description: error.message });
+    },
+  });
+
+  const handleSetup = () => {
+    if (password !== confirmPassword) {
+      toast.error("Passwords don't match");
+      return;
+    }
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setupMutation.mutate({ username, password });
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto p-3 bg-primary/10 rounded-full w-fit mb-4">
+            <Shield className="h-8 w-8 text-primary" />
+          </div>
+          <CardTitle className="text-2xl">Setup Admin Account</CardTitle>
+          <CardDescription>
+            Create your admin credentials to get started
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              placeholder="admin"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </div>
+          <Button
+            className="w-full"
+            onClick={handleSetup}
+            disabled={!username || !password || !confirmPassword || setupMutation.isPending}
+          >
+            {setupMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create Admin Account"
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Admin Login Component
+function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const loginMutation = trpc.adminAuth.login.useMutation({
+    onSuccess: () => {
+      toast.success("Welcome back!");
+      onSuccess();
+    },
+    onError: (error) => {
+      toast.error("Login failed", { description: error.message });
+    },
+  });
+
+  const handleLogin = () => {
+    loginMutation.mutate({ username, password });
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto p-3 bg-primary/10 rounded-full w-fit mb-4">
+            <Truck className="h-8 w-8 text-primary" />
+          </div>
+          <CardTitle className="text-2xl">Admin Login</CardTitle>
+          <CardDescription>
+            Sign in to manage drivers and routes
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              placeholder="admin"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <Button
+            className="w-full"
+            onClick={handleLogin}
+            disabled={!username || !password || loginMutation.isPending}
+          >
+            {loginMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              "Sign In"
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Admin Content Component (main dashboard)
+function AdminContent({ 
+  admin, 
+  sidebarWidth, 
+  setSidebarWidth,
+  onLogout 
+}: { 
+  admin: { id: number; username: string }; 
+  sidebarWidth: number;
+  setSidebarWidth: (w: number) => void;
+  onLogout: () => void;
+}) {
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
-  const isCollapsed = state === "collapsed";
+  const isMobile = useIsMobile();
+  const { state: sidebarState } = useSidebar();
+  const isCollapsed = sidebarState === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find((item) => location.startsWith(item.path));
-  const isMobile = useIsMobile();
 
-  useEffect(() => {
-    if (isCollapsed) {
-      setIsResizing(false);
-    }
-  }, [isCollapsed]);
+  const logoutMutation = trpc.adminAuth.logout.useMutation({
+    onSuccess: () => {
+      toast.success("Signed out");
+      onLogout();
+    },
+  });
+
+  const activeMenuItem = menuItems.find(
+    (item) => item.path === location || (item.path !== "/admin" && location.startsWith(item.path))
+  ) || menuItems[0];
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
-        setSidebarWidth(newWidth);
-      }
+      const newWidth = Math.min(Math.max(e.clientX, MIN_WIDTH), MAX_WIDTH);
+      setSidebarWidth(newWidth);
     };
 
     const handleMouseUp = () => {
@@ -200,75 +364,43 @@ function AdminDashboardContent({ setSidebarWidth }: AdminDashboardContentProps) 
     if (isResizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
     }
 
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
     };
   }, [isResizing, setSidebarWidth]);
 
-  // Determine which content to show based on route
-  const renderContent = () => {
-    if (location === "/admin/drivers") {
-      return <DriversPage />;
-    }
-    if (location === "/admin/routes") {
-      return <RoutesPage />;
-    }
-    if (location === "/admin/schedule") {
-      return <SchedulePage />;
-    }
-    if (location === "/admin/notifications") {
-      return <NotificationsPage />;
-    }
-    return <DashboardOverview />;
-  };
-
   return (
     <>
-      <div className="relative" ref={sidebarRef}>
-        <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
-          <SidebarHeader className="h-16 justify-center">
-            <div className="flex items-center gap-3 px-2 transition-all w-full">
-              <button
-                onClick={toggleSidebar}
-                className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                aria-label="Toggle navigation"
-              >
-                <PanelLeft className="h-4 w-4 text-muted-foreground" />
-              </button>
-              {!isCollapsed ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <Truck className="h-5 w-5 text-primary shrink-0" />
-                  <span className="font-semibold tracking-tight truncate">Admin Panel</span>
-                </div>
-              ) : null}
+      <div ref={sidebarRef} className="relative">
+        <Sidebar collapsible="icon">
+          <SidebarHeader className="p-4">
+            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
+              <div className="p-2 bg-primary/10 rounded-lg shrink-0">
+                <Truck className="h-5 w-5 text-primary" />
+              </div>
+              <span className="font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+                Driver Scheduler
+              </span>
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="gap-0">
-            <SidebarMenu className="px-2 py-1">
-              {menuItems.map((item) => {
-                const isActive = location === item.path || (item.path !== "/admin" && location.startsWith(item.path));
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className="h-10 transition-all font-normal"
-                    >
-                      <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+          <SidebarContent className="px-2">
+            <SidebarMenu>
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.path}>
+                  <SidebarMenuButton
+                    isActive={activeMenuItem?.path === item.path}
+                    onClick={() => setLocation(item.path)}
+                    tooltip={item.label}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarContent>
 
@@ -278,18 +410,18 @@ function AdminDashboardContent({ setSidebarWidth }: AdminDashboardContentProps) 
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
                     <AvatarFallback className="text-xs font-medium bg-primary text-primary-foreground">
-                      {user?.name?.charAt(0).toUpperCase()}
+                      {admin.username.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">{user?.name || "-"}</p>
-                    <p className="text-xs text-muted-foreground truncate mt-1.5">{user?.email || "-"}</p>
+                    <p className="text-sm font-medium truncate leading-none">{admin.username}</p>
+                    <p className="text-xs text-muted-foreground truncate mt-1.5">Administrator</p>
                   </div>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem
-                  onClick={logout}
+                  onClick={() => logoutMutation.mutate()}
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
@@ -320,23 +452,28 @@ function AdminDashboardContent({ setSidebarWidth }: AdminDashboardContentProps) 
             </div>
           </div>
         )}
-        <main className="flex-1 p-4 md:p-6">{renderContent()}</main>
+        <main className="flex-1 p-6 overflow-auto">
+          {location === "/admin" && <DashboardPage />}
+          {location === "/admin/drivers" && <DriversPage />}
+          {location === "/admin/routes" && <RoutesPage />}
+          {location === "/admin/schedule" && <SchedulePage />}
+          {location === "/admin/notifications" && <NotificationsPage />}
+        </main>
       </SidebarInset>
     </>
   );
 }
 
-// Dashboard Overview Component
-function DashboardOverview() {
+// Dashboard Page Component
+function DashboardPage() {
   const { data: drivers } = trpc.drivers.list.useQuery();
   const { data: routes } = trpc.routes.list.useQuery();
 
   const activeDrivers = drivers?.filter((d) => d.status === "active").length || 0;
   const pendingDrivers = drivers?.filter((d) => d.status === "pending").length || 0;
   const todayRoutes = routes?.filter((r) => {
-    const today = new Date().toISOString().split("T")[0];
-    const routeDate = new Date(r.assignment.date).toISOString().split("T")[0];
-    return routeDate === today;
+    const routeDate = new Date(r.assignment.date).toDateString();
+    return routeDate === new Date().toDateString();
   }).length || 0;
 
   return (
@@ -354,18 +491,9 @@ function DashboardOverview() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activeDrivers}</div>
-            <p className="text-xs text-muted-foreground">Ready for assignments</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Invites</CardTitle>
-            <UserPlus className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingDrivers}</div>
-            <p className="text-xs text-muted-foreground">Awaiting first login</p>
+            <p className="text-xs text-muted-foreground">
+              {pendingDrivers} pending invitations
+            </p>
           </CardContent>
         </Card>
 
@@ -376,61 +504,44 @@ function DashboardOverview() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{todayRoutes}</div>
-            <p className="text-xs text-muted-foreground">Scheduled for today</p>
+            <p className="text-xs text-muted-foreground">Assigned for today</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Vans</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Routes</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{routes?.length || 0}</div>
+            <p className="text-xs text-muted-foreground">All time</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Drivers</CardTitle>
             <Truck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">T1-T6, Z1-Z5, M1</p>
+            <div className="text-2xl font-bold">{drivers?.length || 0}</div>
+            <p className="text-xs text-muted-foreground">Registered drivers</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Recent Drivers</CardTitle>
-            <CardDescription>Latest driver activity</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {drivers?.slice(0, 5).map((driver) => (
-              <div key={driver.id} className="flex items-center gap-3 py-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="text-xs">{driver.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{driver.name}</p>
-                  <p className="text-xs text-muted-foreground">{driver.phone}</p>
-                </div>
-                <Badge
-                  variant={driver.status === "active" ? "default" : driver.status === "pending" ? "secondary" : "outline"}
-                >
-                  {driver.status}
-                </Badge>
-              </div>
-            ))}
-            {(!drivers || drivers.length === 0) && (
-              <p className="text-sm text-muted-foreground py-4 text-center">No drivers yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Routes</CardTitle>
-            <CardDescription>Next scheduled assignments</CardDescription>
+            <CardTitle>Recent Routes</CardTitle>
+            <CardDescription>Latest route assignments</CardDescription>
           </CardHeader>
           <CardContent>
             {routes?.slice(0, 5).map((route) => (
-              <div key={route.assignment.id} className="flex items-center gap-3 py-2">
+              <div key={route.assignment.id} className="flex items-center gap-4 py-2 border-b last:border-0">
                 <div
-                  className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                  className={`h-10 w-10 rounded-lg flex items-center justify-center text-xs font-bold ${
                     route.assignment.routeType === "big-box"
                       ? "bg-orange-100 text-orange-800"
                       : route.assignment.routeType === "out-of-town"
@@ -438,19 +549,57 @@ function DashboardOverview() {
                       : "bg-blue-100 text-blue-800"
                   }`}
                 >
-                  {route.assignment.routeType === "big-box" ? "BB" : route.assignment.routeType === "out-of-town" ? "OT" : "R"}
+                  {route.assignment.routeType === "big-box"
+                    ? "BB"
+                    : route.assignment.routeType === "out-of-town"
+                    ? "OT"
+                    : "REG"}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{route.driver.name}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{route.driver.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(route.assignment.date).toLocaleDateString()}
                   </p>
                 </div>
-                {route.van && <Badge variant="outline">{route.van.name}</Badge>}
+                <Badge variant="outline">{route.assignment.status}</Badge>
               </div>
             ))}
             {(!routes || routes.length === 0) && (
-              <p className="text-sm text-muted-foreground py-4 text-center">No routes scheduled</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No routes yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Driver Status</CardTitle>
+            <CardDescription>Current driver overview</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {drivers?.slice(0, 5).map((driver) => (
+              <div key={driver.id} className="flex items-center gap-4 py-2 border-b last:border-0">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="text-xs">{driver.name.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{driver.name}</p>
+                  <p className="text-xs text-muted-foreground">{driver.phone}</p>
+                </div>
+                <Badge
+                  variant={
+                    driver.status === "active"
+                      ? "default"
+                      : driver.status === "pending"
+                      ? "secondary"
+                      : "outline"
+                  }
+                >
+                  {driver.status}
+                </Badge>
+              </div>
+            ))}
+            {(!drivers || drivers.length === 0) && (
+              <p className="text-sm text-muted-foreground text-center py-4">No drivers yet</p>
             )}
           </CardContent>
         </Card>
@@ -461,37 +610,22 @@ function DashboardOverview() {
 
 // Drivers Page Component
 function DriversPage() {
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [editDriver, setEditDriver] = useState<any>(null);
-  const [notifyDriver, setNotifyDriver] = useState<any>(null);
-  const [newDriver, setNewDriver] = useState({ name: "", phone: "", email: "" });
-  const [notification, setNotification] = useState({ subject: "", message: "", email: true, sms: true });
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: "", phone: "", email: "" });
+  const [lastLoginCode, setLastLoginCode] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
   const { data: drivers, isLoading } = trpc.drivers.list.useQuery();
 
   const inviteMutation = trpc.drivers.invite.useMutation({
     onSuccess: (data) => {
-      toast.success("Driver invited successfully", {
-        description: `Login code: ${data.loginCode}`,
-      });
-      setInviteOpen(false);
-      setNewDriver({ name: "", phone: "", email: "" });
+      toast.success("Driver invited successfully");
+      setLastLoginCode(data.loginCode);
+      setInviteForm({ name: "", phone: "", email: "" });
       utils.drivers.list.invalidate();
     },
     onError: (error) => {
       toast.error("Failed to invite driver", { description: error.message });
-    },
-  });
-
-  const updateMutation = trpc.drivers.update.useMutation({
-    onSuccess: () => {
-      toast.success("Driver updated");
-      setEditDriver(null);
-      utils.drivers.list.invalidate();
-    },
-    onError: (error) => {
-      toast.error("Failed to update driver", { description: error.message });
     },
   });
 
@@ -516,33 +650,24 @@ function DriversPage() {
     },
   });
 
-  const notifyMutation = trpc.drivers.notify.useMutation({
-    onSuccess: (result) => {
-      const sent = [];
-      if (result.emailSent) sent.push("email");
-      if (result.smsSent) sent.push("SMS");
-      if (sent.length > 0) {
-        toast.success(`Notification sent via ${sent.join(" and ")}`);
-      } else {
-        toast.warning("Notification could not be sent");
-      }
-      setNotifyDriver(null);
-      setNotification({ subject: "", message: "", email: true, sms: true });
-    },
-    onError: (error) => {
-      toast.error("Failed to send notification", { description: error.message });
-    },
-  });
+  const handleInvite = () => {
+    inviteMutation.mutate(inviteForm);
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success("Code copied to clipboard");
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Drivers</h1>
-          <p className="text-muted-foreground">Manage your driver roster</p>
+          <p className="text-muted-foreground">Manage your delivery drivers</p>
         </div>
-        <Button onClick={() => setInviteOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
+        <Button onClick={() => setShowInviteDialog(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
           Invite Driver
         </Button>
       </div>
@@ -555,20 +680,19 @@ function DriversPage() {
               <TableHead>Phone</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Joined</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={5} className="text-center py-8">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : drivers?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   No drivers yet. Invite your first driver to get started.
                 </TableCell>
               </TableRow>
@@ -602,14 +726,15 @@ function DriversPage() {
                   <TableCell>
                     <Badge
                       variant={
-                        driver.status === "active" ? "default" : driver.status === "pending" ? "secondary" : "outline"
+                        driver.status === "active"
+                          ? "default"
+                          : driver.status === "pending"
+                          ? "secondary"
+                          : "outline"
                       }
                     >
                       {driver.status}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(driver.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -619,11 +744,6 @@ function DriversPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditDriver(driver)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setNotifyDriver(driver)}>
-                          <Bell className="h-4 w-4 mr-2" />
-                          Send Notification
-                        </DropdownMenuItem>
                         {driver.status === "pending" && (
                           <DropdownMenuItem onClick={() => resendMutation.mutate({ id: driver.id })}>
                             <RefreshCw className="h-4 w-4 mr-2" />
@@ -631,12 +751,8 @@ function DriversPage() {
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to remove this driver?")) {
-                              deleteMutation.mutate({ id: driver.id });
-                            }
-                          }}
+                          onClick={() => deleteMutation.mutate({ id: driver.id })}
+                          className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Remove
@@ -651,205 +767,85 @@ function DriversPage() {
         </Table>
       </Card>
 
-      {/* Invite Driver Dialog */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+      {/* Invite Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Invite New Driver</DialogTitle>
-            <DialogDescription>Send an invitation to a new driver to join the system.</DialogDescription>
+            <DialogDescription>
+              Send an invitation to a new driver. They'll receive a login code.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                placeholder="John Doe"
-                value={newDriver.name}
-                onChange={(e) => setNewDriver({ ...newDriver, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                placeholder="(555) 123-4567"
-                value={newDriver.phone}
-                onChange={(e) => setNewDriver({ ...newDriver, phone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email (optional)</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="john@example.com"
-                value={newDriver.email}
-                onChange={(e) => setNewDriver({ ...newDriver, email: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInviteOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() =>
-                inviteMutation.mutate({
-                  name: newDriver.name,
-                  phone: newDriver.phone,
-                  email: newDriver.email || undefined,
-                })
-              }
-              disabled={!newDriver.name || !newDriver.phone || inviteMutation.isPending}
-            >
-              {inviteMutation.isPending ? "Inviting..." : "Send Invitation"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Driver Dialog */}
-      <Dialog open={!!editDriver} onOpenChange={() => setEditDriver(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Driver</DialogTitle>
-          </DialogHeader>
-          {editDriver && (
+          {lastLoginCode ? (
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editDriver.name}
-                  onChange={(e) => setEditDriver({ ...editDriver, name: e.target.value })}
-                />
+              <div className="p-4 bg-green-50 rounded-lg text-center">
+                <p className="text-sm text-muted-foreground mb-2">Driver Login Code</p>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-3xl font-mono font-bold tracking-widest">{lastLoginCode}</span>
+                  <Button variant="ghost" size="icon" onClick={() => copyCode(lastLoginCode)}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Share this code with the driver to let them sign in
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Phone Number</Label>
-                <Input
-                  id="edit-phone"
-                  value={editDriver.phone}
-                  onChange={(e) => setEditDriver({ ...editDriver, phone: e.target.value })}
-                />
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setLastLoginCode(null);
+                  setShowInviteDialog(false);
+                }}
+              >
+                Done
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="John Doe"
+                    value={inviteForm.name}
+                    onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="(555) 123-4567"
+                    value={inviteForm.phone}
+                    onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email (optional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="driver@example.com"
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  value={editDriver.email || ""}
-                  onChange={(e) => setEditDriver({ ...editDriver, email: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <Select
-                  value={editDriver.status}
-                  onValueChange={(value) => setEditDriver({ ...editDriver, status: value })}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleInvite}
+                  disabled={!inviteForm.name || !inviteForm.phone || inviteMutation.isPending}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+                  {inviteMutation.isPending ? "Inviting..." : "Send Invitation"}
+                </Button>
+              </DialogFooter>
+            </>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDriver(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() =>
-                updateMutation.mutate({
-                  id: editDriver.id,
-                  name: editDriver.name,
-                  phone: editDriver.phone,
-                  email: editDriver.email || null,
-                  status: editDriver.status,
-                })
-              }
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Notify Driver Dialog */}
-      <Dialog open={!!notifyDriver} onOpenChange={() => setNotifyDriver(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send Notification</DialogTitle>
-            <DialogDescription>Send a message to {notifyDriver?.name}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="notify-subject">Subject</Label>
-              <Input
-                id="notify-subject"
-                placeholder="Important Update"
-                value={notification.subject}
-                onChange={(e) => setNotification({ ...notification, subject: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notify-message">Message</Label>
-              <Textarea
-                id="notify-message"
-                placeholder="Your message here..."
-                rows={4}
-                value={notification.message}
-                onChange={(e) => setNotification({ ...notification, message: e.target.value })}
-              />
-            </div>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={notification.email}
-                  onChange={(e) => setNotification({ ...notification, email: e.target.checked })}
-                  className="rounded"
-                />
-                <Mail className="h-4 w-4" />
-                Email
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={notification.sms}
-                  onChange={(e) => setNotification({ ...notification, sms: e.target.checked })}
-                  className="rounded"
-                />
-                <MessageSquare className="h-4 w-4" />
-                SMS
-              </label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNotifyDriver(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() =>
-                notifyMutation.mutate({
-                  id: notifyDriver.id,
-                  subject: notification.subject,
-                  message: notification.message,
-                  email: notification.email,
-                  sms: notification.sms,
-                })
-              }
-              disabled={!notification.subject || !notification.message || notifyMutation.isPending}
-            >
-              {notifyMutation.isPending ? "Sending..." : "Send"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -858,8 +854,8 @@ function DriversPage() {
 
 // Routes Page Component
 function RoutesPage() {
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [newRoute, setNewRoute] = useState({
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [assignForm, setAssignForm] = useState({
     driverId: "",
     date: "",
     routeType: "regular" as "regular" | "big-box" | "out-of-town",
@@ -872,11 +868,13 @@ function RoutesPage() {
   const { data: drivers } = trpc.drivers.list.useQuery();
   const { data: vans } = trpc.vans.list.useQuery();
 
+  const activeDrivers = drivers?.filter((d) => d.status === "active") || [];
+
   const assignMutation = trpc.routes.assign.useMutation({
     onSuccess: () => {
       toast.success("Route assigned successfully");
-      setAssignOpen(false);
-      setNewRoute({ driverId: "", date: "", routeType: "regular", vanId: "", notes: "" });
+      setShowAssignDialog(false);
+      setAssignForm({ driverId: "", date: "", routeType: "regular", vanId: "", notes: "" });
       utils.routes.list.invalidate();
     },
     onError: (error) => {
@@ -894,7 +892,20 @@ function RoutesPage() {
     },
   });
 
-  const activeDrivers = drivers?.filter((d) => d.status === "active") || [];
+  const handleAssign = () => {
+    assignMutation.mutate({
+      driverId: parseInt(assignForm.driverId),
+      date: assignForm.date,
+      routeType: assignForm.routeType,
+      vanId: assignForm.vanId ? parseInt(assignForm.vanId) : undefined,
+      notes: assignForm.notes || undefined,
+    });
+  };
+
+  // Set minimum date to tomorrow (24-hour notice)
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().split("T")[0];
 
   return (
     <div className="space-y-6">
@@ -903,7 +914,7 @@ function RoutesPage() {
           <h1 className="text-2xl font-bold tracking-tight">Routes</h1>
           <p className="text-muted-foreground">Manage route assignments</p>
         </div>
-        <Button onClick={() => setAssignOpen(true)}>
+        <Button onClick={() => setShowAssignDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Assign Route
         </Button>
@@ -915,10 +926,10 @@ function RoutesPage() {
             <TableRow>
               <TableHead>Date</TableHead>
               <TableHead>Driver</TableHead>
-              <TableHead>Route Type</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Van</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -931,13 +942,13 @@ function RoutesPage() {
             ) : routes?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  No routes assigned yet.
+                  No routes assigned yet
                 </TableCell>
               </TableRow>
             ) : (
               routes?.map((route) => (
                 <TableRow key={route.assignment.id}>
-                  <TableCell className="font-medium">
+                  <TableCell>
                     {new Date(route.assignment.date).toLocaleDateString("en-US", {
                       weekday: "short",
                       month: "short",
@@ -954,12 +965,13 @@ function RoutesPage() {
                   </TableCell>
                   <TableCell>
                     <Badge
+                      variant="outline"
                       className={
                         route.assignment.routeType === "big-box"
-                          ? "bg-orange-100 text-orange-800 hover:bg-orange-100"
+                          ? "border-orange-300 text-orange-700 bg-orange-50"
                           : route.assignment.routeType === "out-of-town"
-                          ? "bg-purple-100 text-purple-800 hover:bg-purple-100"
-                          : "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                          ? "border-purple-300 text-purple-700 bg-purple-50"
+                          : "border-blue-300 text-blue-700 bg-blue-50"
                       }
                     >
                       {route.assignment.routeType === "big-box"
@@ -992,12 +1004,8 @@ function RoutesPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to cancel this route?")) {
-                              deleteMutation.mutate({ id: route.assignment.id });
-                            }
-                          }}
+                          onClick={() => deleteMutation.mutate({ id: route.assignment.id })}
+                          className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Cancel Route
@@ -1013,18 +1021,18 @@ function RoutesPage() {
       </Card>
 
       {/* Assign Route Dialog */}
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+      <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign Route</DialogTitle>
             <DialogDescription>
-              Assign a route to a driver. Routes require 24 hours advance notice.
+              Assign a route to a driver. Requires 24-hour advance notice.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Driver</Label>
-              <Select value={newRoute.driverId} onValueChange={(v) => setNewRoute({ ...newRoute, driverId: v })}>
+              <Select value={assignForm.driverId} onValueChange={(v) => setAssignForm({ ...assignForm, driverId: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select driver" />
                 </SelectTrigger>
@@ -1041,30 +1049,31 @@ function RoutesPage() {
               <Label>Date</Label>
               <Input
                 type="date"
-                value={newRoute.date}
-                onChange={(e) => setNewRoute({ ...newRoute, date: e.target.value })}
-                min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
+                min={minDate}
+                value={assignForm.date}
+                onChange={(e) => setAssignForm({ ...assignForm, date: e.target.value })}
               />
+              <p className="text-xs text-muted-foreground">Must be at least 24 hours from now</p>
             </div>
             <div className="space-y-2">
               <Label>Route Type</Label>
               <Select
-                value={newRoute.routeType}
-                onValueChange={(v: "regular" | "big-box" | "out-of-town") => setNewRoute({ ...newRoute, routeType: v })}
+                value={assignForm.routeType}
+                onValueChange={(v: any) => setAssignForm({ ...assignForm, routeType: v })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="regular">Regular</SelectItem>
-                  <SelectItem value="big-box">Big Box</SelectItem>
-                  <SelectItem value="out-of-town">Out of Town</SelectItem>
+                  <SelectItem value="big-box">Big Box (once/week)</SelectItem>
+                  <SelectItem value="out-of-town">Out of Town (once/week)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Van (optional)</Label>
-              <Select value={newRoute.vanId} onValueChange={(v) => setNewRoute({ ...newRoute, vanId: v })}>
+              <Select value={assignForm.vanId} onValueChange={(v) => setAssignForm({ ...assignForm, vanId: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select van" />
                 </SelectTrigger>
@@ -1081,26 +1090,18 @@ function RoutesPage() {
               <Label>Notes (optional)</Label>
               <Textarea
                 placeholder="Any special instructions..."
-                value={newRoute.notes}
-                onChange={(e) => setNewRoute({ ...newRoute, notes: e.target.value })}
+                value={assignForm.notes}
+                onChange={(e) => setAssignForm({ ...assignForm, notes: e.target.value })}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)}>
+            <Button variant="outline" onClick={() => setShowAssignDialog(false)}>
               Cancel
             </Button>
             <Button
-              onClick={() =>
-                assignMutation.mutate({
-                  driverId: parseInt(newRoute.driverId),
-                  date: newRoute.date,
-                  routeType: newRoute.routeType,
-                  vanId: newRoute.vanId ? parseInt(newRoute.vanId) : undefined,
-                  notes: newRoute.notes || undefined,
-                })
-              }
-              disabled={!newRoute.driverId || !newRoute.date || assignMutation.isPending}
+              onClick={handleAssign}
+              disabled={!assignForm.driverId || !assignForm.date || assignMutation.isPending}
             >
               {assignMutation.isPending ? "Assigning..." : "Assign Route"}
             </Button>
@@ -1115,7 +1116,8 @@ function RoutesPage() {
 function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   
-  const { data: availableDrivers } = trpc.availability.getForDate.useQuery({ date: selectedDate });
+  const { data: scheduleData } = trpc.schedule.byDate.useQuery({ date: selectedDate });
+  const availableDrivers = scheduleData?.available;
   const { data: routes } = trpc.routes.list.useQuery({
     startDate: selectedDate,
     endDate: selectedDate,
@@ -1156,7 +1158,7 @@ function SchedulePage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {availableDrivers?.map((item) => (
+                {availableDrivers?.map((item: any) => (
                   <div key={item.driver.id} className="flex items-center gap-3 p-2 rounded-lg bg-green-50">
                     <Avatar className="h-8 w-8">
                       <AvatarFallback className="text-xs bg-green-100">
@@ -1230,7 +1232,7 @@ function SchedulePage() {
 
 // Notifications Page Component
 function NotificationsPage() {
-  const { data: logs, isLoading } = trpc.notifications.logs.useQuery();
+  const { data: logs, isLoading } = trpc.notifications.list.useQuery();
 
   return (
     <div className="space-y-6">
@@ -1263,7 +1265,7 @@ function NotificationsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              logs?.map((log) => (
+              logs?.map((log: any) => (
                 <TableRow key={log.id}>
                   <TableCell className="text-muted-foreground">
                     {new Date(log.createdAt).toLocaleString()}
