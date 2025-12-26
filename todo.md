@@ -164,3 +164,7 @@
 
 ## Documentation
 - [x] Create driver quick guide with screenshots (login and availability)
+
+## Landing Page Redesign
+- [x] Make landing page driver-focused (remove Admin Portal card)
+- [x] Add simple admin login link in corner/footer
