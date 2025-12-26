@@ -1,0 +1,90 @@
+{
+  "query": "SELECT * FROM availability WHERE date >= '2025-12-29' ORDER BY date LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT * FROM availability WHERE date >= '2025-12-29' ORDER BY date LIMIT 10;",
+  "rows": [
+    {
+      "id": "60018",
+      "driverId": "60001",
+      "date": "2025-12-29",
+      "isAvailable": "1",
+      "createdAt": "2025-12-26 19:47:33",
+      "updatedAt": "2025-12-26 19:47:33"
+    },
+    {
+      "id": "60001",
+      "driverId": "1",
+      "date": "2025-12-29",
+      "isAvailable": "1",
+      "createdAt": "2025-12-26 19:09:29",
+      "updatedAt": "2025-12-26 19:09:29"
+    },
+    {
+      "id": "9",
+      "driverId": "30001",
+      "date": "2025-12-29",
+      "isAvailable": "1",
+      "createdAt": "2025-12-25 02:15:59",
+      "updatedAt": "2025-12-25 02:15:59"
+    },
+    {
+      "id": "60020",
+      "driverId": "60001",
+      "date": "2025-12-30",
+      "isAvailable": "0",
+      "createdAt": "2025-12-26 19:48:33",
+      "updatedAt": "2025-12-26 19:48:35"
+    },
+    {
+      "id": "60029",
+      "driverId": "1",
+      "date": "2025-12-30",
+      "isAvailable": "1",
+      "createdAt": "2025-12-26 19:59:54",
+      "updatedAt": "2025-12-26 19:59:54"
+    },
+    {
+      "id": "60010",
+      "driverId": "60001",
+      "date": "2025-12-31",
+      "isAvailable": "1",
+      "createdAt": "2025-12-26 19:47:27",
+      "updatedAt": "2025-12-26 19:47:27"
+    },
+    {
+      "id": "10",
+      "driverId": "30001",
+      "date": "2025-12-31",
+      "isAvailable": "1",
+      "createdAt": "2025-12-25 02:16:00",
+      "updatedAt": "2025-12-25 02:16:00"
+    },
+    {
+      "id": "60011",
+      "driverId": "60001",
+      "date": "2026-01-01",
+      "isAvailable": "1",
+      "createdAt": "2025-12-26 19:47:27",
+      "updatedAt": "2025-12-26 19:47:30"
+    },
+    {
+      "id": "11",
+      "driverId": "30001",
+      "date": "2026-01-01",
+      "isAvailable": "1",
+      "createdAt": "2025-12-25 02:16:01",
+      "updatedAt": "2025-12-25 02:16:01"
+    },
+    {
+      "id": "12",
+      "driverId": "30001",
+      "date": "2026-01-02",
+      "isAvailable": "1",
+      "createdAt": "2025-12-25 02:16:01",
+      "updatedAt": "2025-12-25 02:16:01"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tdriverId\tdate\tisAvailable\tcreatedAt\tupdatedAt\n60018\t60001\t2025-12-29\t1\t2025-12-26 19:47:33\t2025-12-26 19:47:33\n60001\t1\t2025-12-29\t1\t2025-12-26 19:09:29\t2025-12-26 19:09:29\n9\t30001\t2025-12-29\t1\t2025-12-25 02:15:59\t2025-12-25 02:15:59\n60020\t60001\t2025-12-30\t0\t2025-12-26 19:48:33\t2025-12-26 19:48:35\n60029\t1\t2025-12-30\t1\t2025-12-26 19:59:54\t2025-12-26 19:59:54\n60010\t60001\t2025-12-31\t1\t2025-12-26 19:47:27\t2025-12-26 19:47:27\n10\t30001\t2025-12-31\t1\t2025-12-25 02:16:00\t2025-12-25 02:16:00\n60011\t60001\t2026-01-01\t1\t2025-12-26 19:47:27\t2025-12-26 19:47:30\n11\t30001\t2026-01-01\t1\t2025-12-25 02:16:01\t2025-12-25 02:16:01\n12\t30001\t2026-01-02\t1\t2025-12-25 02:16:01\t2025-12-25 02:16:01\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

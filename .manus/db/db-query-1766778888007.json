@@ -1,0 +1,13 @@
+{
+  "query": "SELECT loginCode FROM drivers WHERE phone = '5551234567' LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT loginCode FROM drivers WHERE phone = '5551234567' LIMIT 1;",
+  "rows": [
+    {
+      "loginCode": "338500"
+    }
+  ],
+  "messages": [],
+  "stdout": "loginCode\n338500\n",
+  "stderr": "",
+  "execution_time_ms": 50
+}

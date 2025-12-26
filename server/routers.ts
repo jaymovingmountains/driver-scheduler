@@ -711,6 +711,32 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    saveAvailabilityBatch: publicProcedure
+      .input(z.object({
+        availability: z.array(z.object({
+          date: z.string(),
+          isAvailable: z.boolean(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const token = getDriverToken(ctx);
+        if (!token) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
+        }
+        
+        const driver = await db.getDriverBySessionToken(token);
+        if (!driver) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
+        }
+        
+        // Save all availability entries
+        for (const entry of input.availability) {
+          await db.setAvailability(driver.id, entry.date, entry.isAvailable);
+        }
+        
+        return { success: true, savedCount: input.availability.length };
+      }),
+
     updateRoute: publicProcedure
       .input(z.object({
         routeId: z.number(),

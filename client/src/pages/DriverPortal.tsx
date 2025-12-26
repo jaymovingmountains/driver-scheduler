@@ -30,6 +30,7 @@ import {
   LogOut,
   Phone,
   Route,
+  Save,
   Truck,
   X,
 } from "lucide-react";
@@ -531,6 +532,10 @@ function AvailabilityCalendar() {
     return new Date(today.setDate(diff));
   });
 
+  // Track pending changes locally before saving
+  const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
   const utils = trpc.useUtils();
 
   // Calculate date range for 2 weeks
@@ -544,12 +549,17 @@ function AvailabilityCalendar() {
     endDate: endDateStr,
   });
 
-  const setAvailabilityMutation = trpc.driverPortal.setAvailability.useMutation({
-    onSuccess: () => {
+  const saveAvailabilityMutation = trpc.driverPortal.saveAvailabilityBatch.useMutation({
+    onSuccess: (data) => {
       utils.driverPortal.myAvailability.invalidate();
+      setPendingChanges({});
+      setHasUnsavedChanges(false);
+      toast.success("Availability saved!", { 
+        description: `${data.savedCount} day(s) updated. Your admin can now see your schedule.` 
+      });
     },
     onError: (error) => {
-      toast.error("Failed to update availability", { description: error.message });
+      toast.error("Failed to save availability", { description: error.message });
     },
   });
 
@@ -568,19 +578,44 @@ function AvailabilityCalendar() {
 
   const getAvailabilityForDate = (date: Date) => {
     const dateStr = date.toISOString().split("T")[0];
-    return availability?.find((a) => {
+    
+    // Check pending changes first
+    if (dateStr in pendingChanges) {
+      return { isAvailable: pendingChanges[dateStr], isPending: true };
+    }
+    
+    const saved = availability?.find((a) => {
       const availDate = new Date(a.date).toISOString().split("T")[0];
       return availDate === dateStr;
     });
+    
+    return saved ? { isAvailable: saved.isAvailable, isPending: false } : undefined;
   };
 
   const toggleAvailability = (date: Date) => {
     const dateStr = date.toISOString().split("T")[0];
     const current = getAvailabilityForDate(date);
-    setAvailabilityMutation.mutate({
-      date: dateStr,
-      isAvailable: !current?.isAvailable,
-    });
+    const newValue = !current?.isAvailable;
+    
+    setPendingChanges(prev => ({
+      ...prev,
+      [dateStr]: newValue,
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSave = () => {
+    const availabilityEntries = Object.entries(pendingChanges).map(([date, isAvailable]) => ({
+      date,
+      isAvailable,
+    }));
+    
+    if (availabilityEntries.length === 0) {
+      toast.info("No changes to save");
+      return;
+    }
+    
+    saveAvailabilityMutation.mutate({ availability: availabilityEntries });
   };
 
   const today = new Date();
@@ -616,16 +651,19 @@ function AvailabilityCalendar() {
               const avail = getAvailabilityForDate(date);
               const isPast = date < today;
               const isToday = date.toDateString() === today.toDateString();
+              const dateStr = date.toISOString().split("T")[0];
+              const isPending = dateStr in pendingChanges;
 
               return (
                 <button
                   key={date.toISOString()}
                   onClick={() => !isPast && toggleAvailability(date)}
-                  disabled={isPast || setAvailabilityMutation.isPending}
+                  disabled={isPast || saveAvailabilityMutation.isPending}
                   className={`
                     aspect-square rounded-lg border-2 flex flex-col items-center justify-center gap-1 transition-all
                     ${isPast ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:scale-105"}
                     ${isToday ? "ring-2 ring-primary ring-offset-2" : ""}
+                    ${isPending ? "ring-2 ring-orange-400 ring-offset-1" : ""}
                     ${
                       avail?.isAvailable
                         ? "bg-green-100 border-green-400 text-green-800"
@@ -661,11 +699,35 @@ function AvailabilityCalendar() {
           <div className="h-4 w-4 rounded bg-gray-50 border-2 border-gray-200" />
           <span>Not Set</span>
         </div>
+        {hasUnsavedChanges && (
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 rounded ring-2 ring-orange-400" />
+            <span className="text-orange-600 font-medium">Unsaved</span>
+          </div>
+        )}
       </div>
 
-      <p className="text-xs text-muted-foreground text-center">
-        Click on a day to toggle your availability. Your admin will see this when assigning routes.
-      </p>
+      {/* Save Button */}
+      <div className="flex flex-col items-center gap-2">
+        <Button 
+          onClick={handleSave} 
+          disabled={!hasUnsavedChanges || saveAvailabilityMutation.isPending}
+          size="lg"
+          className="w-full max-w-xs"
+        >
+          {saveAvailabilityMutation.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
+          {saveAvailabilityMutation.isPending ? "Saving..." : "Save Availability"}
+        </Button>
+        <p className="text-xs text-muted-foreground text-center">
+          {hasUnsavedChanges 
+            ? "You have unsaved changes. Click Save to update your availability."
+            : "Click on days to mark yourself available or unavailable, then save."}
+        </p>
+      </div>
     </div>
   );
 }

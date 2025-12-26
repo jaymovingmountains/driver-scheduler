@@ -137,3 +137,7 @@
 ## Bug Fixes
 - [x] Fix driver login code email message - now shows accurate error about Resend domain verification
 - [x] Update sender email to use verified domain movingmountainslogistics.com
+
+## Driver Availability Save Button
+- [x] Add save button for drivers to confirm availability selections
+- [x] Ensure availability updates sync to admin schedule view
