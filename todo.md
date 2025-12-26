@@ -187,3 +187,7 @@
 - [x] Implement scheduled job to run every 6 hours
 - [x] Only remind drivers who haven't set availability 24hrs before a given day
 - [x] Test reminder system (8 tests passing)
+
+## Admin Reminder Trigger UI
+- [x] Add button to admin dashboard to manually trigger availability reminders
+- [x] Show results of reminder job (how many sent, failed)

@@ -56,6 +56,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -74,6 +75,7 @@ import {
   RefreshCw,
   Route,
   Search,
+  Send,
   Shield,
   GripVertical,
   Trash2,
@@ -82,6 +84,7 @@ import {
   UserMinus,
   UserPlus,
   Users,
+  XCircle,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -2282,63 +2285,153 @@ function SchedulePage() {
 
 // Notifications Page Component
 function NotificationsPage() {
-  const { data: logs, isLoading } = trpc.notifications.list.useQuery();
+  const { data: logs, isLoading, refetch } = trpc.notifications.list.useQuery();
+  const [reminderResults, setReminderResults] = useState<{
+    totalReminded: number;
+    totalFailed: number;
+    results: Array<{
+      date: string;
+      driversReminded: number;
+      driversFailed: number;
+    }>;
+  } | null>(null);
+
+  const sendRemindersMutation = trpc.notifications.runAvailabilityReminders.useMutation({
+    onSuccess: (data) => {
+      setReminderResults(data);
+      refetch();
+      if (data.totalReminded > 0) {
+        toast.success(`Sent ${data.totalReminded} availability reminder${data.totalReminded > 1 ? 's' : ''}`);
+      } else {
+        toast.info('No drivers need availability reminders at this time');
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to send reminders: ${error.message}`);
+    },
+  });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
-        <p className="text-muted-foreground">View sent notification history</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
+          <p className="text-muted-foreground">Manage and view notification history</p>
+        </div>
       </div>
 
+      {/* Availability Reminders Section */}
       <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Subject</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center py-8">
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : logs?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                  No notifications sent yet
-                </TableCell>
-              </TableRow>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            Availability Reminders
+          </CardTitle>
+          <CardDescription>
+            Send reminder emails to drivers who haven't set their availability for upcoming dates (24-48 hours ahead).
+            Reminders are automatically sent every 6 hours, but you can trigger them manually here.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button
+            onClick={() => sendRemindersMutation.mutate()}
+            disabled={sendRemindersMutation.isPending}
+            className="gap-2"
+          >
+            {sendRemindersMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sending Reminders...
+              </>
             ) : (
-              logs?.map((log: any) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(log.createdAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="gap-1">
-                      {log.type === "email" ? <Mail className="h-3 w-3" /> : <MessageSquare className="h-3 w-3" />}
-                      {log.type.toUpperCase()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{log.subject || "-"}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={log.status === "sent" ? "default" : log.status === "failed" ? "destructive" : "secondary"}
-                    >
-                      {log.status}
-                    </Badge>
+              <>
+                <Send className="h-4 w-4" />
+                Send Availability Reminders Now
+              </>
+            )}
+          </Button>
+
+          {reminderResults && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  <span className="font-medium">{reminderResults.totalReminded} sent</span>
+                </div>
+                {reminderResults.totalFailed > 0 && (
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-5 w-5 text-red-500" />
+                    <span className="font-medium">{reminderResults.totalFailed} failed</span>
+                  </div>
+                )}
+              </div>
+              {reminderResults.results.map((result) => (
+                <div key={result.date} className="text-sm text-muted-foreground">
+                  <span className="font-medium">{new Date(result.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}:</span>
+                  {' '}{result.driversReminded} reminder{result.driversReminded !== 1 ? 's' : ''} sent
+                  {result.driversFailed > 0 && `, ${result.driversFailed} failed`}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Notification History */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Notification History</CardTitle>
+          <CardDescription>View all sent notifications</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Subject</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8">
+                    Loading...
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : logs?.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    No notifications sent yet
+                  </TableCell>
+                </TableRow>
+              ) : (
+                logs?.map((log: any) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(log.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="gap-1">
+                        {log.type === "email" ? <Mail className="h-3 w-3" /> : <MessageSquare className="h-3 w-3" />}
+                        {log.type.toUpperCase()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{log.subject || "-"}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={log.status === "sent" ? "default" : log.status === "failed" ? "destructive" : "secondary"}
+                      >
+                        {log.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
       </Card>
     </div>
   );
