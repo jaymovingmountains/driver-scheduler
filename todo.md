@@ -168,3 +168,7 @@
 ## Landing Page Redesign
 - [x] Make landing page driver-focused (remove Admin Portal card)
 - [x] Add simple admin login link in corner/footer
+
+## Branding Update
+- [x] Add MML logo to landing page
+- [x] Update color scheme to match logo (orange/red gradient)
