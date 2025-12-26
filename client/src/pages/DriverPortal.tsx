@@ -60,11 +60,21 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const requestCodeMutation = trpc.driverAuth.requestCode.useMutation({
     onSuccess: (data) => {
       toast.success(data.message);
       setStep("code");
+      setResendCooldown(60); // Start 60 second cooldown
     },
     onError: (error) => {
       toast.error("Failed to send code", { description: error.message });
@@ -179,6 +189,17 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
               </Button>
               <Button variant="ghost" className="w-full" onClick={() => setStep("phone")}>
                 Use different number
+              </Button>
+              <Button
+                variant="link"
+                className="w-full text-sm"
+                onClick={() => requestCodeMutation.mutate({ phone })}
+                disabled={requestCodeMutation.isPending || resendCooldown > 0}
+              >
+                {resendCooldown > 0 
+                  ? `Resend code in ${resendCooldown}s` 
+                  : "Resend code"
+                }
               </Button>
             </div>
           )}

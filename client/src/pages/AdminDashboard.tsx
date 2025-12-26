@@ -146,6 +146,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const utils = trpc.useUtils();
   
@@ -156,6 +157,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     onSuccess: () => {
       toast.success("Login code sent to your email");
       setStep("code");
+      setResendCooldown(60); // Start 60 second cooldown
     },
     onError: (error: any) => {
       toast.error("Failed to send code", { description: error.message });
@@ -198,6 +200,14 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
       setEmail(adminEmailData.email);
     }
   }, [adminEmailData?.email, email]);
+
+  // Cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -301,10 +311,15 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
                 type="button"
                 variant="link"
                 className="w-full text-sm"
-                onClick={() => sendCodeMutation.mutate({ email })}
-                disabled={sendCodeMutation.isPending}
+                onClick={() => {
+                  sendCodeMutation.mutate({ email });
+                }}
+                disabled={sendCodeMutation.isPending || resendCooldown > 0}
               >
-                Resend code
+                {resendCooldown > 0 
+                  ? `Resend code in ${resendCooldown}s` 
+                  : "Resend code"
+                }
               </Button>
             </form>
           )}

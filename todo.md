@@ -93,3 +93,8 @@
 - [x] Create endpoint to verify admin login code
 - [x] Update admin login UI to use email and code flow
 - [x] Remove password-based authentication
+
+## Resend Code Feature
+- [x] Add Resend Code button to admin login interface
+- [x] Add Resend Code button to driver login interface
+- [x] Add cooldown timer to prevent spam (60 seconds)
