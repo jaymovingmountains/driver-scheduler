@@ -9,7 +9,8 @@ import {
   notificationLogs, InsertNotificationLog,
   driverSessions, InsertDriverSession,
   adminCredentials, InsertAdminCredential,
-  adminSessions, InsertAdminSession
+  adminSessions, InsertAdminSession,
+  loginAttempts, InsertLoginAttempt, LoginAttempt
 } from "../drizzle/schema";
 import bcrypt from 'bcryptjs';
 import { ENV } from './_core/env';
@@ -580,4 +581,114 @@ export async function adminExists() {
   
   const result = await db.select().from(adminCredentials).limit(1);
   return result.length > 0;
+}
+
+// ============ LOGIN ATTEMPT LOGGING ============
+
+export async function logLoginAttempt(attempt: {
+  attemptType: 'driver' | 'admin';
+  identifier: string;
+  success: boolean;
+  failureReason?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  driverId?: number;
+}) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot log login attempt: database not available");
+    return;
+  }
+  
+  try {
+    await db.insert(loginAttempts).values({
+      attemptType: attempt.attemptType,
+      identifier: attempt.identifier,
+      success: attempt.success,
+      failureReason: attempt.failureReason || null,
+      ipAddress: attempt.ipAddress || null,
+      userAgent: attempt.userAgent || null,
+      driverId: attempt.driverId || null,
+    });
+  } catch (error) {
+    console.error("[Database] Failed to log login attempt:", error);
+  }
+}
+
+export async function getLoginAttempts(options?: {
+  limit?: number;
+  offset?: number;
+  attemptType?: 'driver' | 'admin';
+  successOnly?: boolean;
+  failedOnly?: boolean;
+  startDate?: string;
+  endDate?: string;
+}): Promise<LoginAttempt[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const limit = options?.limit || 100;
+  const offset = options?.offset || 0;
+  
+  let query = db.select().from(loginAttempts);
+  
+  const conditions = [];
+  
+  if (options?.attemptType) {
+    conditions.push(eq(loginAttempts.attemptType, options.attemptType));
+  }
+  
+  if (options?.successOnly) {
+    conditions.push(eq(loginAttempts.success, true));
+  }
+  
+  if (options?.failedOnly) {
+    conditions.push(eq(loginAttempts.success, false));
+  }
+  
+  if (options?.startDate) {
+    conditions.push(gte(loginAttempts.createdAt, new Date(options.startDate)));
+  }
+  
+  if (options?.endDate) {
+    conditions.push(lte(loginAttempts.createdAt, new Date(options.endDate)));
+  }
+  
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as typeof query;
+  }
+  
+  const results = await query
+    .orderBy(desc(loginAttempts.createdAt))
+    .limit(limit)
+    .offset(offset);
+  
+  return results;
+}
+
+export async function getLoginAttemptStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, successful: 0, failed: 0, recentFailed: 0 };
+  
+  // Get total counts
+  const totalResult = await db.select({ count: sql<number>`count(*)` }).from(loginAttempts);
+  const successResult = await db.select({ count: sql<number>`count(*)` }).from(loginAttempts).where(eq(loginAttempts.success, true));
+  const failedResult = await db.select({ count: sql<number>`count(*)` }).from(loginAttempts).where(eq(loginAttempts.success, false));
+  
+  // Get failed attempts in last 24 hours
+  const oneDayAgo = new Date();
+  oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+  const recentFailedResult = await db.select({ count: sql<number>`count(*)` })
+    .from(loginAttempts)
+    .where(and(
+      eq(loginAttempts.success, false),
+      gte(loginAttempts.createdAt, oneDayAgo)
+    ));
+  
+  return {
+    total: Number(totalResult[0]?.count || 0),
+    successful: Number(successResult[0]?.count || 0),
+    failed: Number(failedResult[0]?.count || 0),
+    recentFailed: Number(recentFailedResult[0]?.count || 0),
+  };
 }

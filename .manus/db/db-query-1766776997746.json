@@ -1,0 +1,32 @@
+{
+  "query": "SELECT * FROM login_attempts ORDER BY createdAt DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT * FROM login_attempts ORDER BY createdAt DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "2",
+      "attemptType": "driver",
+      "identifier": "1112223333",
+      "success": "0",
+      "failureReason": "Phone number not registered",
+      "ipAddress": "66.42.16.140, 172.16.1.222",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36; Manus-User/1.0",
+      "driverId": "NULL",
+      "createdAt": "2025-12-26 19:22:59"
+    },
+    {
+      "id": "1",
+      "attemptType": "driver",
+      "identifier": "1112223333",
+      "success": "0",
+      "failureReason": "Phone number not registered",
+      "ipAddress": "66.42.16.140, 172.16.1.222",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36; Manus-User/1.0",
+      "driverId": "NULL",
+      "createdAt": "2025-12-26 19:22:36"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tattemptType\tidentifier\tsuccess\tfailureReason\tipAddress\tuserAgent\tdriverId\tcreatedAt\n2\tdriver\t1112223333\t0\tPhone number not registered\t66.42.16.140, 172.16.1.222\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36; Manus-User/1.0\tNULL\t2025-12-26 19:22:59\n1\tdriver\t1112223333\t0\tPhone number not registered\t66.42.16.140, 172.16.1.222\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36; Manus-User/1.0\tNULL\t2025-12-26 19:22:36\n",
+  "stderr": "",
+  "execution_time_ms": 98
+}

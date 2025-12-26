@@ -147,3 +147,21 @@ export const adminSessions = mysqlTable("admin_sessions", {
 
 export type AdminSession = typeof adminSessions.$inferSelect;
 export type InsertAdminSession = typeof adminSessions.$inferInsert;
+
+/**
+ * Login attempts - tracks all login attempts for security monitoring
+ */
+export const loginAttempts = mysqlTable("login_attempts", {
+  id: int("id").autoincrement().primaryKey(),
+  attemptType: mysqlEnum("attemptType", ["driver", "admin"]).notNull(),
+  identifier: varchar("identifier", { length: 320 }).notNull(), // phone or email
+  success: boolean("success").default(false).notNull(),
+  failureReason: varchar("failureReason", { length: 255 }),
+  ipAddress: varchar("ipAddress", { length: 45 }), // IPv6 compatible
+  userAgent: text("userAgent"),
+  driverId: int("driverId"), // null if login failed due to unknown user
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LoginAttempt = typeof loginAttempts.$inferSelect;
+export type InsertLoginAttempt = typeof loginAttempts.$inferInsert;

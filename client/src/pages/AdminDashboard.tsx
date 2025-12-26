@@ -104,6 +104,7 @@ const menuItems = [
   { icon: Route, label: "Routes", path: "/admin/routes" },
   { icon: CalendarDays, label: "Schedule", path: "/admin/schedule" },
   { icon: Bell, label: "Notifications", path: "/admin/notifications" },
+  { icon: Shield, label: "Security Logs", path: "/admin/security" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "admin-sidebar-width";
@@ -483,6 +484,7 @@ function AdminContent({
           {location === "/admin/routes" && <RoutesPage />}
           {location === "/admin/schedule" && <SchedulePage />}
           {location === "/admin/notifications" && <NotificationsPage />}
+          {location === "/admin/security" && <SecurityLogsPage />}
         </main>
       </SidebarInset>
     </>
@@ -2082,6 +2084,143 @@ function NotificationsPage() {
                     >
                       {log.status}
                     </Badge>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+    </div>
+  );
+}
+
+// Security Logs Page Component
+function SecurityLogsPage() {
+  const [filter, setFilter] = useState<'all' | 'failed' | 'success'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'driver' | 'admin'>('all');
+  
+  const { data: stats } = trpc.securityLogs.stats.useQuery();
+  const { data: logs, isLoading } = trpc.securityLogs.list.useQuery({
+    limit: 100,
+    failedOnly: filter === 'failed' ? true : undefined,
+    successOnly: filter === 'success' ? true : undefined,
+    attemptType: typeFilter !== 'all' ? typeFilter : undefined,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Security Logs</h1>
+        <p className="text-muted-foreground">Monitor login attempts and security events</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Attempts</CardDescription>
+            <CardTitle className="text-3xl">{stats?.total || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Successful Logins</CardDescription>
+            <CardTitle className="text-3xl text-green-600">{stats?.successful || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Failed Attempts</CardDescription>
+            <CardTitle className="text-3xl text-red-600">{stats?.failed || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Failed (24h)</CardDescription>
+            <CardTitle className="text-3xl text-orange-600">{stats?.recentFailed || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-4">
+        <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Attempts</SelectItem>
+            <SelectItem value="failed">Failed Only</SelectItem>
+            <SelectItem value="success">Successful Only</SelectItem>
+          </SelectContent>
+        </Select>
+        
+        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="driver">Driver Logins</SelectItem>
+            <SelectItem value="admin">Admin Logins</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Logs Table */}
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date/Time</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Identifier</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Reason</TableHead>
+              <TableHead>IP Address</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                </TableCell>
+              </TableRow>
+            ) : !logs?.length ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  No login attempts recorded yet
+                </TableCell>
+              </TableRow>
+            ) : (
+              logs.map((log: any) => (
+                <TableRow key={log.id}>
+                  <TableCell className="text-muted-foreground whitespace-nowrap">
+                    {new Date(log.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="gap-1">
+                      {log.attemptType === "admin" ? (
+                        <Shield className="h-3 w-3" />
+                      ) : (
+                        <Truck className="h-3 w-3" />
+                      )}
+                      {log.attemptType.toUpperCase()}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-mono text-sm">{log.identifier}</TableCell>
+                  <TableCell>
+                    <Badge variant={log.success ? "default" : "destructive"}>
+                      {log.success ? "Success" : "Failed"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {log.failureReason || "-"}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {log.ipAddress || "-"}
                   </TableCell>
                 </TableRow>
               ))

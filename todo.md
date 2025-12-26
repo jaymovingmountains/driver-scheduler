@@ -121,3 +121,15 @@
 - [x] Show visual feedback during drag operations
 - [x] Validate reassignment (driver availability, 24-hour notice)
 - [x] Update UI optimistically on successful drop
+
+## Driver Login Restriction
+- [x] Only allow invited drivers (in drivers table) to login to driver portal
+- [x] Show clear error message for unauthorized users ("Phone number not registered")
+- [x] Unauthorized users stay on login page (no redirect needed)
+
+## Login Attempt Logging
+- [x] Create loginAttempts database table
+- [x] Log failed login attempts (wrong phone, invalid code)
+- [x] Log successful login attempts
+- [x] Add Security Logs page to admin dashboard
+- [x] Display login attempts with filtering options

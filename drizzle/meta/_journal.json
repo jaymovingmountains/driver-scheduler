@@ -29,6 +29,13 @@
       "when": 1766732378961,
       "tag": "0003_slow_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1766776686069,
+      "tag": "0004_lame_thena",
+      "breakpoints": true
     }
   ]
 }

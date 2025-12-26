@@ -87,9 +87,21 @@ export const appRouter = router({
       .input(z.object({
         email: z.string().email(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const ipAddress = ctx.req.headers['x-forwarded-for'] as string || ctx.req.socket?.remoteAddress || undefined;
+        const userAgent = ctx.req.headers['user-agent'] as string || undefined;
+        
         // Only allow the hardcoded admin email
         if (input.email.toLowerCase() !== db.ADMIN_EMAIL.toLowerCase()) {
+          // Log failed attempt - unauthorized email
+          await db.logLoginAttempt({
+            attemptType: 'admin',
+            identifier: input.email,
+            success: false,
+            failureReason: 'Email not authorized as admin',
+            ipAddress,
+            userAgent,
+          });
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'This email is not authorized as admin' });
         }
         
@@ -112,10 +124,31 @@ export const appRouter = router({
         code: z.string().length(6),
       }))
       .mutation(async ({ input, ctx }) => {
+        const ipAddress = ctx.req.headers['x-forwarded-for'] as string || ctx.req.socket?.remoteAddress || undefined;
+        const userAgent = ctx.req.headers['user-agent'] as string || undefined;
+        
         const admin = await db.verifyAdminLoginCode(input.email, input.code);
         if (!admin) {
+          // Log failed attempt - invalid code
+          await db.logLoginAttempt({
+            attemptType: 'admin',
+            identifier: input.email,
+            success: false,
+            failureReason: 'Invalid or expired login code',
+            ipAddress,
+            userAgent,
+          });
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired login code' });
         }
+        
+        // Log successful login
+        await db.logLoginAttempt({
+          attemptType: 'admin',
+          identifier: input.email,
+          success: true,
+          ipAddress,
+          userAgent,
+        });
         
         const token = await db.createAdminSession(admin.id);
         
@@ -179,9 +212,21 @@ export const appRouter = router({
   driverAuth: router({
     requestCode: publicProcedure
       .input(z.object({ phone: z.string().min(10) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const ipAddress = ctx.req.headers['x-forwarded-for'] as string || ctx.req.socket?.remoteAddress || undefined;
+        const userAgent = ctx.req.headers['user-agent'] as string || undefined;
+        
         const driver = await db.getDriverByPhone(input.phone);
         if (!driver) {
+          // Log failed attempt - unknown phone
+          await db.logLoginAttempt({
+            attemptType: 'driver',
+            identifier: input.phone,
+            success: false,
+            failureReason: 'Phone number not registered',
+            ipAddress,
+            userAgent,
+          });
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Phone number not registered' });
         }
         
@@ -202,10 +247,36 @@ export const appRouter = router({
         code: z.string().length(6),
       }))
       .mutation(async ({ input, ctx }) => {
+        const ipAddress = ctx.req.headers['x-forwarded-for'] as string || ctx.req.socket?.remoteAddress || undefined;
+        const userAgent = ctx.req.headers['user-agent'] as string || undefined;
+        
+        // First get the driver to have their ID for logging
+        const driverLookup = await db.getDriverByPhone(input.phone);
+        
         const driver = await db.verifyDriverLoginCode(input.phone, input.code);
         if (!driver) {
+          // Log failed attempt - invalid code
+          await db.logLoginAttempt({
+            attemptType: 'driver',
+            identifier: input.phone,
+            success: false,
+            failureReason: 'Invalid or expired code',
+            ipAddress,
+            userAgent,
+            driverId: driverLookup?.id,
+          });
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired code' });
         }
+        
+        // Log successful login
+        await db.logLoginAttempt({
+          attemptType: 'driver',
+          identifier: input.phone,
+          success: true,
+          ipAddress,
+          userAgent,
+          driverId: driver.id,
+        });
         
         const token = await db.createDriverSession(driver.id);
         
@@ -691,6 +762,29 @@ export const appRouter = router({
         
         return { success: true };
       }),
+  }),
+
+  // ============ SECURITY LOGS ============
+  securityLogs: router({
+    list: adminProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(500).default(100),
+        offset: z.number().min(0).default(0),
+        attemptType: z.enum(['driver', 'admin']).optional(),
+        successOnly: z.boolean().optional(),
+        failedOnly: z.boolean().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const attempts = await db.getLoginAttempts(input);
+        return attempts;
+      }),
+
+    stats: adminProcedure.query(async () => {
+      const stats = await db.getLoginAttemptStats();
+      return stats;
+    }),
   }),
 });
 

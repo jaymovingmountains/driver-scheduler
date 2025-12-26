@@ -29,6 +29,10 @@ vi.mock("./db", () => ({
   setAvailability: vi.fn(),
   getDb: vi.fn(),
   getDriverRouteAssignments: vi.fn(),
+  // Login attempt logging
+  logLoginAttempt: vi.fn(),
+  getLoginAttempts: vi.fn(),
+  getLoginAttemptStats: vi.fn(),
   // Admin auth functions (email-based)
   ADMIN_EMAIL: "jay@movingmountainslogistics.com",
   getOrCreateAdmin: vi.fn(),
