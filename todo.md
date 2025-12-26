@@ -104,3 +104,10 @@
 - [x] Driver portal displays assigned routes
 - [x] Email notification for route assignments
 - [x] 24-hour advance notice validation
+
+## Weekly Schedule View
+- [x] Weekly calendar grid showing all days of the week
+- [x] Display driver assignments per day with route type badges
+- [x] Week navigation (previous/next week)
+- [x] Show driver availability status per day
+- [x] Quick view of assigned van for each route

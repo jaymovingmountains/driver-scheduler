@@ -55,6 +55,8 @@ import {
   Calendar,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -1426,120 +1428,383 @@ function RoutesPage() {
   );
 }
 
-// Schedule Page Component
+// Schedule Page Component - Weekly View
 function SchedulePage() {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  // Get the start of the current week (Monday)
+  const getWeekStart = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    return new Date(d.setDate(diff));
+  };
+
+  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
   
-  const { data: scheduleData } = trpc.schedule.byDate.useQuery({ date: selectedDate });
-  const availableDrivers = scheduleData?.available;
-  const { data: routes } = trpc.routes.list.useQuery({
-    startDate: selectedDate,
-    endDate: selectedDate,
+  // Calculate week end (Sunday)
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+
+  // Format dates for API
+  const startDateStr = weekStart.toISOString().split("T")[0];
+  const endDateStr = weekEnd.toISOString().split("T")[0];
+
+  // Fetch data for the entire week
+  const { data: routes, isLoading: routesLoading } = trpc.routes.list.useQuery({
+    startDate: startDateStr,
+    endDate: endDateStr,
   });
+
+  const { data: allAvailability, isLoading: availLoading } = trpc.schedule.allAvailability.useQuery({
+    startDate: startDateStr,
+    endDate: endDateStr,
+  });
+
+  const { data: drivers } = trpc.drivers.list.useQuery();
+
+  // Generate array of days for the week
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + i);
+    return date;
+  });
+
+  // Navigate to previous/next week
+  const goToPreviousWeek = () => {
+    const newStart = new Date(weekStart);
+    newStart.setDate(weekStart.getDate() - 7);
+    setWeekStart(newStart);
+  };
+
+  const goToNextWeek = () => {
+    const newStart = new Date(weekStart);
+    newStart.setDate(weekStart.getDate() + 7);
+    setWeekStart(newStart);
+  };
+
+  const goToCurrentWeek = () => {
+    setWeekStart(getWeekStart(new Date()));
+  };
+
+  // Get routes for a specific date
+  const getRoutesForDate = (date: Date) => {
+    const dateStr = date.toISOString().split("T")[0];
+    return routes?.filter((route) => {
+      const routeDate = new Date(route.assignment.date).toISOString().split("T")[0];
+      return routeDate === dateStr;
+    }) || [];
+  };
+
+  // Get available drivers for a specific date
+  const getAvailableDriversForDate = (date: Date) => {
+    const dateStr = date.toISOString().split("T")[0];
+    return allAvailability?.filter((item) => 
+      item.availability.some((a: any) => a.date === dateStr && a.isAvailable)
+    ).map((item) => item.driver) || [];
+  };
+
+  // Check if a date is today
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
+  // Format week range for display
+  const formatWeekRange = () => {
+    const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+    const startStr = weekStart.toLocaleDateString('en-US', options);
+    const endStr = weekEnd.toLocaleDateString('en-US', { ...options, year: 'numeric' });
+    return `${startStr} - ${endStr}`;
+  };
+
+  const isLoading = routesLoading || availLoading;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Schedule</h1>
-        <p className="text-muted-foreground">View driver availability and assignments</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Weekly Schedule</h1>
+          <p className="text-muted-foreground">View driver assignments and availability at a glance</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={goToPreviousWeek}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={goToCurrentWeek} className="min-w-[180px]">
+            {formatWeekRange()}
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToNextWeek}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      <div className="flex gap-4 items-center">
-        <Label>Select Date:</Label>
-        <Input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="w-auto"
-        />
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-blue-500" />
+          <span>Regular</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-orange-500" />
+          <span>Big Box</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-purple-500" />
+          <span>Out of Town</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-green-500" />
+          <span>Available</span>
+        </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Check className="h-5 w-5 text-green-600" />
-              Available Drivers
-            </CardTitle>
-            <CardDescription>
-              Drivers available on {new Date(selectedDate).toLocaleDateString()}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {availableDrivers?.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No drivers marked as available
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {availableDrivers?.map((item: any) => (
-                  <div key={item.driver.id} className="flex items-center gap-3 p-2 rounded-lg bg-green-50">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs bg-green-100">
-                        {item.driver.name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">{item.driver.name}</p>
-                      <p className="text-xs text-muted-foreground">{item.driver.phone}</p>
+      {/* Weekly Calendar Grid */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 divide-x">
+              {weekDays.map((day, index) => {
+                const dayRoutes = getRoutesForDate(day);
+                const availableDrivers = getAvailableDriversForDate(day);
+                const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
+                const dayNum = day.getDate();
+                const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
+
+                return (
+                  <div
+                    key={index}
+                    className={`min-h-[300px] flex flex-col ${
+                      isToday(day) ? 'bg-blue-50/50' : isPast ? 'bg-muted/30' : ''
+                    }`}
+                  >
+                    {/* Day Header */}
+                    <div className={`p-3 border-b text-center ${
+                      isToday(day) ? 'bg-blue-100' : 'bg-muted/50'
+                    }`}>
+                      <p className="text-xs font-medium text-muted-foreground uppercase">{dayName}</p>
+                      <p className={`text-lg font-bold ${
+                        isToday(day) ? 'text-blue-600' : ''
+                      }`}>{dayNum}</p>
+                    </div>
+
+                    {/* Day Content */}
+                    <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+                      {/* Assigned Routes */}
+                      {dayRoutes.length > 0 ? (
+                        dayRoutes.map((route) => (
+                          <div
+                            key={route.assignment.id}
+                            className={`p-2 rounded-lg text-xs border ${
+                              route.assignment.routeType === 'big-box'
+                                ? 'bg-orange-50 border-orange-200'
+                                : route.assignment.routeType === 'out-of-town'
+                                ? 'bg-purple-50 border-purple-200'
+                                : 'bg-blue-50 border-blue-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 mb-1">
+                              <div
+                                className={`h-2 w-2 rounded-full ${
+                                  route.assignment.routeType === 'big-box'
+                                    ? 'bg-orange-500'
+                                    : route.assignment.routeType === 'out-of-town'
+                                    ? 'bg-purple-500'
+                                    : 'bg-blue-500'
+                                }`}
+                              />
+                              <span className="font-medium truncate">{route.driver.name}</span>
+                            </div>
+                            <div className="text-muted-foreground">
+                              {route.assignment.routeType === 'big-box'
+                                ? 'Big Box'
+                                : route.assignment.routeType === 'out-of-town'
+                                ? 'Out of Town'
+                                : 'Regular'}
+                              {route.van && (
+                                <span className="ml-1 px-1 py-0.5 bg-white rounded text-[10px]">
+                                  {route.van.name}
+                                </span>
+                              )}
+                            </div>
+                            {route.assignment.status !== 'assigned' && (
+                              <Badge
+                                variant={route.assignment.status === 'completed' ? 'default' : 'destructive'}
+                                className="mt-1 text-[10px] h-4"
+                              >
+                                {route.assignment.status}
+                              </Badge>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-2">No routes</p>
+                      )}
+
+                      {/* Available Drivers Section */}
+                      {availableDrivers.length > 0 && (
+                        <div className="pt-2 border-t mt-2">
+                          <p className="text-[10px] font-medium text-green-700 mb-1 flex items-center gap-1">
+                            <Check className="h-3 w-3" />
+                            Available ({availableDrivers.length})
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {availableDrivers.slice(0, 3).map((driver: any) => (
+                              <span
+                                key={driver.id}
+                                className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800 rounded"
+                              >
+                                {driver.name.split(' ')[0]}
+                              </span>
+                            ))}
+                            {availableDrivers.length > 3 && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800 rounded">
+                                +{availableDrivers.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Route className="h-5 w-5 text-blue-600" />
-              Assigned Routes
-            </CardTitle>
-            <CardDescription>
-              Routes for {new Date(selectedDate).toLocaleDateString()}
-            </CardDescription>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Routes This Week</CardDescription>
+            <CardTitle className="text-3xl">{routes?.length || 0}</CardTitle>
           </CardHeader>
-          <CardContent>
-            {routes?.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No routes assigned</p>
-            ) : (
-              <div className="space-y-2">
-                {routes?.map((route) => (
-                  <div key={route.assignment.id} className="flex items-center gap-3 p-2 rounded-lg bg-blue-50">
-                    <div
-                      className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                        route.assignment.routeType === "big-box"
-                          ? "bg-orange-100 text-orange-800"
-                          : route.assignment.routeType === "out-of-town"
-                          ? "bg-purple-100 text-purple-800"
-                          : "bg-blue-100 text-blue-800"
-                      }`}
-                    >
-                      {route.assignment.routeType === "big-box"
-                        ? "BB"
-                        : route.assignment.routeType === "out-of-town"
-                        ? "OT"
-                        : "R"}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{route.driver.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {route.assignment.routeType === "big-box"
-                          ? "Big Box"
-                          : route.assignment.routeType === "out-of-town"
-                          ? "Out of Town"
-                          : "Regular"}
-                        {route.van && ` • ${route.van.name}`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Regular Routes</CardDescription>
+            <CardTitle className="text-3xl text-blue-600">
+              {routes?.filter((r) => r.assignment.routeType === 'regular').length || 0}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Big Box Routes</CardDescription>
+            <CardTitle className="text-3xl text-orange-600">
+              {routes?.filter((r) => r.assignment.routeType === 'big-box').length || 0}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Out of Town Routes</CardDescription>
+            <CardTitle className="text-3xl text-purple-600">
+              {routes?.filter((r) => r.assignment.routeType === 'out-of-town').length || 0}
+            </CardTitle>
+          </CardHeader>
         </Card>
       </div>
+
+      {/* Driver Assignment Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Driver Assignments This Week</CardTitle>
+          <CardDescription>Overview of all driver schedules</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[150px]">Driver</TableHead>
+                {weekDays.map((day, i) => (
+                  <TableHead key={i} className={`text-center ${
+                    isToday(day) ? 'bg-blue-50' : ''
+                  }`}>
+                    {day.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {drivers?.filter((d) => d.status === 'active').map((driver) => (
+                <TableRow key={driver.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-6 w-6">
+                        <AvatarFallback className="text-xs">
+                          {driver.name.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate">{driver.name}</span>
+                    </div>
+                  </TableCell>
+                  {weekDays.map((day, i) => {
+                    const dayRoutes = getRoutesForDate(day).filter(
+                      (r) => r.driver.id === driver.id
+                    );
+                    const isAvailable = getAvailableDriversForDate(day).some(
+                      (d: any) => d.id === driver.id
+                    );
+
+                    return (
+                      <TableCell
+                        key={i}
+                        className={`text-center p-1 ${
+                          isToday(day) ? 'bg-blue-50/50' : ''
+                        }`}
+                      >
+                        {dayRoutes.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {dayRoutes.map((route) => (
+                              <Badge
+                                key={route.assignment.id}
+                                variant="outline"
+                                className={`text-[10px] justify-center ${
+                                  route.assignment.routeType === 'big-box'
+                                    ? 'border-orange-300 bg-orange-50 text-orange-700'
+                                    : route.assignment.routeType === 'out-of-town'
+                                    ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                    : 'border-blue-300 bg-blue-50 text-blue-700'
+                                }`}
+                              >
+                                {route.assignment.routeType === 'big-box'
+                                  ? 'BB'
+                                  : route.assignment.routeType === 'out-of-town'
+                                  ? 'OT'
+                                  : 'REG'}
+                                {route.van && ` ${route.van.name}`}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : isAvailable ? (
+                          <div className="flex justify-center">
+                            <div className="h-2 w-2 rounded-full bg-green-500" title="Available" />
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+              {(!drivers || drivers.filter((d) => d.status === 'active').length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    No active drivers
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
