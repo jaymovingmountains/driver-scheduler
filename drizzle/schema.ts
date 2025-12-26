@@ -165,3 +165,19 @@ export const loginAttempts = mysqlTable("login_attempts", {
 
 export type LoginAttempt = typeof loginAttempts.$inferSelect;
 export type InsertLoginAttempt = typeof loginAttempts.$inferInsert;
+
+/**
+ * Availability reminders - tracks reminder emails sent to drivers
+ */
+export const availabilityReminders = mysqlTable("availability_reminders", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  reminderDate: date("reminderDate").notNull(), // The date they need to set availability for
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("driver_reminder_date_idx").on(table.driverId, table.reminderDate, table.sentAt),
+]);
+
+export type AvailabilityReminder = typeof availabilityReminders.$inferSelect;
+export type InsertAvailabilityReminder = typeof availabilityReminders.$inferInsert;

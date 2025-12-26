@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { runAvailabilityReminderJob } from "../jobs/availabilityReminder";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -59,7 +60,41 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    
+    // Start the availability reminder scheduler (runs every 6 hours)
+    startAvailabilityReminderScheduler();
   });
+}
+
+/**
+ * Schedule availability reminder job to run every 6 hours
+ * This sends reminder emails to drivers who haven't set their availability
+ * for dates within 24-48 hours
+ */
+function startAvailabilityReminderScheduler() {
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+  
+  // Run immediately on startup (after a short delay to let DB connect)
+  setTimeout(async () => {
+    console.log('[Scheduler] Running initial availability reminder check...');
+    try {
+      await runAvailabilityReminderJob();
+    } catch (error) {
+      console.error('[Scheduler] Initial reminder job failed:', error);
+    }
+  }, 10000); // 10 second delay on startup
+  
+  // Then run every 6 hours
+  setInterval(async () => {
+    console.log('[Scheduler] Running scheduled availability reminder check...');
+    try {
+      await runAvailabilityReminderJob();
+    } catch (error) {
+      console.error('[Scheduler] Scheduled reminder job failed:', error);
+    }
+  }, SIX_HOURS_MS);
+  
+  console.log('[Scheduler] Availability reminder scheduler started (runs every 6 hours)');
 }
 
 startServer().catch(console.error);

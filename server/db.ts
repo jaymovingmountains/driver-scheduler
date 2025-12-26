@@ -10,7 +10,8 @@ import {
   driverSessions, InsertDriverSession,
   adminCredentials, InsertAdminCredential,
   adminSessions, InsertAdminSession,
-  loginAttempts, InsertLoginAttempt, LoginAttempt
+  loginAttempts, InsertLoginAttempt, LoginAttempt,
+  availabilityReminders, InsertAvailabilityReminder
 } from "../drizzle/schema";
 import bcrypt from 'bcryptjs';
 import { ENV } from './_core/env';
@@ -691,4 +692,87 @@ export async function getLoginAttemptStats() {
     failed: Number(failedResult[0]?.count || 0),
     recentFailed: Number(recentFailedResult[0]?.count || 0),
   };
+}
+
+// ============ AVAILABILITY REMINDER HELPERS ============
+
+/**
+ * Get active drivers who haven't set availability for a specific date
+ * and haven't been reminded in the last 6 hours
+ */
+export async function getDriversNeedingAvailabilityReminder(targetDate: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Get all active drivers with email
+  const activeDrivers = await db.select()
+    .from(drivers)
+    .where(and(
+      eq(drivers.status, 'active'),
+      sql`${drivers.email} IS NOT NULL AND ${drivers.email} != ''`
+    ));
+  
+  // Get drivers who have set availability for this date
+  const driversWithAvailability = await db.select({ driverId: availability.driverId })
+    .from(availability)
+    .where(sql`${availability.date} = ${targetDate}`);
+  
+  const driversWithAvailabilityIds = new Set(driversWithAvailability.map(d => d.driverId));
+  
+  // Get drivers who were reminded in the last 6 hours for this date
+  const sixHoursAgo = new Date();
+  sixHoursAgo.setHours(sixHoursAgo.getHours() - 6);
+  
+  const recentlyRemindedDrivers = await db.select({ driverId: availabilityReminders.driverId })
+    .from(availabilityReminders)
+    .where(and(
+      sql`${availabilityReminders.reminderDate} = ${targetDate}`,
+      gte(availabilityReminders.sentAt, sixHoursAgo)
+    ));
+  
+  const recentlyRemindedIds = new Set(recentlyRemindedDrivers.map(d => d.driverId));
+  
+  // Filter to drivers who need reminders
+  return activeDrivers.filter(driver => 
+    !driversWithAvailabilityIds.has(driver.id) && 
+    !recentlyRemindedIds.has(driver.id)
+  );
+}
+
+/**
+ * Record that a reminder was sent to a driver for a specific date
+ */
+export async function recordAvailabilityReminder(driverId: number, reminderDate: string) {
+  const db = await getDb();
+  if (!db) return;
+  
+  const dateObj = new Date(reminderDate + 'T00:00:00');
+  
+  await db.insert(availabilityReminders).values({
+    driverId,
+    reminderDate: dateObj,
+    sentAt: new Date(),
+  });
+}
+
+/**
+ * Get dates that are within 24-48 hours from now (need availability set)
+ */
+export function getUpcomingDatesNeedingAvailability(): string[] {
+  const dates: string[] = [];
+  const now = new Date();
+  
+  // Check dates 24-48 hours from now
+  for (let hoursAhead = 24; hoursAhead <= 48; hoursAhead += 24) {
+    const futureDate = new Date(now);
+    futureDate.setHours(futureDate.getHours() + hoursAhead);
+    
+    // Format as YYYY-MM-DD
+    const dateStr = futureDate.toISOString().split('T')[0];
+    if (!dates.includes(dateStr)) {
+      dates.push(dateStr);
+    }
+  }
+  
+  return dates;
 }

@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode, sendWeeklyAvailabilitySummary } from "./notifications";
+import { runAvailabilityReminderJob } from "./jobs/availabilityReminder";
 
 // Cookie names
 const ADMIN_COOKIE_NAME = 'admin_session';
@@ -709,6 +710,22 @@ export const appRouter = router({
         });
         
         return { success, weekStart: startDateStr, weekEnd: endDateStr };
+      }),
+
+    // Run availability reminder job (can be triggered manually or by scheduler)
+    runAvailabilityReminders: adminProcedure
+      .mutation(async () => {
+        const results = await runAvailabilityReminderJob();
+        
+        const totalReminded = results.reduce((sum, r) => sum + r.driversReminded, 0);
+        const totalFailed = results.reduce((sum, r) => sum + r.driversFailed, 0);
+        
+        return {
+          success: true,
+          totalReminded,
+          totalFailed,
+          results,
+        };
       }),
   }),
 

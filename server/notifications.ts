@@ -311,3 +311,63 @@ export async function sendWeeklyAvailabilitySummary(
 
   return sendEmail({ to: adminEmail, subject, html });
 }
+
+
+/**
+ * Send availability reminder email to driver
+ */
+export async function sendAvailabilityReminder(
+  email: string,
+  name: string,
+  targetDate: string
+): Promise<boolean> {
+  if (!email) {
+    console.warn('[Email] No email address provided for availability reminder');
+    return false;
+  }
+
+  const websiteUrl = 'https://driversched.com';
+  const formattedDate = new Date(targetDate + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const subject = `Reminder: Set Your Availability for ${formattedDate}`;
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #1a1a1a;">Hi ${name},</h2>
+      
+      <p style="color: #333; line-height: 1.6;">
+        This is a friendly reminder that you haven't set your availability for <strong>${formattedDate}</strong>.
+      </p>
+      
+      <div style="background: #fff7ed; border-left: 4px solid #f97316; padding: 15px 20px; margin: 20px 0;">
+        <p style="margin: 0; color: #9a3412;">
+          <strong>⏰ Please update your availability soon!</strong><br>
+          Routes are assigned based on driver availability. Setting your availability helps us plan routes efficiently.
+        </p>
+      </div>
+      
+      <p style="color: #333; line-height: 1.6;">To set your availability:</p>
+      <ol style="color: #333; line-height: 1.8;">
+        <li>Go to <a href="${websiteUrl}" style="color: #ea580c; font-weight: bold;">${websiteUrl}</a></li>
+        <li>Sign in with your phone number</li>
+        <li>Click on the "Availability" tab</li>
+        <li>Select the days you're available to work</li>
+        <li>Click "Save Availability"</li>
+      </ol>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${websiteUrl}" style="display: inline-block; background: linear-gradient(to right, #f97316, #dc2626); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Set My Availability</a>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+      <p style="color: #666; font-size: 12px;">Moving Mountains Logistics - Driver Scheduling System</p>
+      <p style="color: #999; font-size: 11px;">You're receiving this reminder because you haven't set your availability for an upcoming work day.</p>
+    </div>
+  `;
+
+  return sendEmail({ to: email, subject, html });
+}

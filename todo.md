@@ -179,3 +179,11 @@
 
 ## Email Improvements
 - [x] Include website link (driversched.com) in driver invite email
+
+## Availability Reminder System
+- [x] Create database table to track reminder emails sent (prevent duplicate emails)
+- [x] Add function to find drivers without availability set for upcoming days
+- [x] Create reminder email template with link to driver portal
+- [x] Implement scheduled job to run every 6 hours
+- [x] Only remind drivers who haven't set availability 24hrs before a given day
+- [x] Test reminder system (8 tests passing)
