@@ -632,7 +632,12 @@ export const appRouter = router({
         
         for (const driver of drivers) {
           const avail = await db.getDriverAvailability(driver.id, input.startDate, input.endDate);
-          result.push({ driver, availability: avail });
+          // Format dates to ISO string format for frontend comparison
+          const formattedAvail = avail.map(a => ({
+            ...a,
+            date: typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0]
+          }));
+          result.push({ driver, availability: formattedAvail });
         }
         
         return result;

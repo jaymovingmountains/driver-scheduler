@@ -141,3 +141,8 @@
 ## Driver Availability Save Button
 - [x] Add save button for drivers to confirm availability selections
 - [x] Ensure availability updates sync to admin schedule view
+
+## Schedule Availability Display
+- [x] Show all available drivers per day in weekly schedule (not just assigned routes)
+- [x] Display driver availability count per day in calendar header
+- [x] Distinguish between available drivers and assigned routes visually (green dots in table)
