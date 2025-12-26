@@ -161,3 +161,6 @@
 - [x] Create endpoint to generate weekly availability summary
 - [x] Send email to admin with driver availability for upcoming week
 - [x] Email Summary button in schedule page (manual trigger)
+
+## Documentation
+- [x] Create driver quick guide with screenshots (login and availability)
