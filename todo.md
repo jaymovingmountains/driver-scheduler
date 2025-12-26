@@ -146,3 +146,18 @@
 - [x] Show all available drivers per day in weekly schedule (not just assigned routes)
 - [x] Display driver availability count per day in calendar header
 - [x] Distinguish between available drivers and assigned routes visually (green dots in table)
+
+## Quick Route Assignment
+- [x] Click on driver's available day in schedule to open quick assign dialog
+- [x] Pre-fill driver and date in the dialog
+- [x] Allow selecting route type and van
+
+## Availability Conflict Warnings
+- [x] Show warning when assigning route to unavailable driver
+- [x] Allow override with confirmation
+- [x] Visual indicator in route assignment dialog
+
+## Weekly Availability Summary Email
+- [x] Create endpoint to generate weekly availability summary
+- [x] Send email to admin with driver availability for upcoming week
+- [x] Email Summary button in schedule page (manual trigger)

@@ -53,6 +53,7 @@ import { ADMIN_TOKEN_KEY } from "@/lib/auth-constants";
 import {
   Bell,
   Calendar,
+  AlertTriangle,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -1200,6 +1201,25 @@ function RoutesPage() {
 
   const activeDrivers = drivers?.filter((d) => d.status === "active") || [];
 
+  // Check availability for selected driver and date
+  const { data: driverAvailability } = trpc.schedule.driverAvailability.useQuery(
+    {
+      driverId: parseInt(assignForm.driverId) || 0,
+      startDate: assignForm.date || new Date().toISOString().split('T')[0],
+      endDate: assignForm.date || new Date().toISOString().split('T')[0],
+    },
+    { enabled: !!assignForm.driverId && !!assignForm.date }
+  );
+
+  const isDriverAvailable = driverAvailability?.some(
+    (a: { date: string | Date; isAvailable: boolean }) => {
+      const availDate = typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0];
+      return availDate === assignForm.date && a.isAvailable;
+    }
+  ) ?? false;
+
+  const showAvailabilityWarning = assignForm.driverId && assignForm.date && !isDriverAvailable;
+
   const assignMutation = trpc.routes.assign.useMutation({
     onSuccess: () => {
       toast.success("Route assigned successfully");
@@ -1359,6 +1379,17 @@ function RoutesPage() {
               Assign a route to a driver. Requires 24-hour advance notice.
             </DialogDescription>
           </DialogHeader>
+          
+          {/* Availability Warning */}
+          {showAvailabilityWarning && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+              <div className="text-sm">
+                <strong>Warning:</strong> This driver has not marked themselves as available on the selected date. You can still assign the route, but please confirm with the driver.
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Driver</Label>
@@ -1614,6 +1645,79 @@ function SchedulePage() {
   });
 
   const { data: drivers } = trpc.drivers.list.useQuery();
+  const { data: vans } = trpc.vans.list.useQuery();
+
+  // Quick assign state
+  const [quickAssignOpen, setQuickAssignOpen] = useState(false);
+  const [quickAssignData, setQuickAssignData] = useState<{
+    driverId: number;
+    driverName: string;
+    date: string;
+    isAvailable: boolean;
+  } | null>(null);
+  const [quickAssignForm, setQuickAssignForm] = useState({
+    routeType: 'regular' as 'regular' | 'big-box' | 'out-of-town',
+    vanId: '',
+    notes: '',
+  });
+
+  // Assign route mutation
+  const assignMutation = trpc.routes.assign.useMutation({
+    onSuccess: () => {
+      utils.routes.list.invalidate();
+      toast.success('Route assigned successfully');
+      setQuickAssignOpen(false);
+      setQuickAssignForm({ routeType: 'regular', vanId: '', notes: '' });
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Handle quick assign click
+  const handleQuickAssignClick = (driver: any, day: Date, isAvailable: boolean) => {
+    const dateStr = day.toISOString().split('T')[0];
+    setQuickAssignData({
+      driverId: driver.id,
+      driverName: driver.name,
+      date: dateStr,
+      isAvailable,
+    });
+    setQuickAssignForm({ routeType: 'regular', vanId: '', notes: '' });
+    setQuickAssignOpen(true);
+  };
+
+  // Submit quick assign
+  const handleQuickAssignSubmit = () => {
+    if (!quickAssignData) return;
+    assignMutation.mutate({
+      driverId: quickAssignData.driverId,
+      date: quickAssignData.date,
+      routeType: quickAssignForm.routeType,
+      vanId: quickAssignForm.vanId ? parseInt(quickAssignForm.vanId) : undefined,
+      notes: quickAssignForm.notes || undefined,
+    });
+  };
+
+  // Weekly summary email state
+  const [showSummaryDialog, setShowSummaryDialog] = useState(false);
+  const [summaryEmail, setSummaryEmail] = useState('');
+
+  // Send weekly summary mutation
+  const sendSummaryMutation = trpc.notifications.sendWeeklySummary.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success('Weekly summary email sent successfully');
+        setShowSummaryDialog(false);
+        setSummaryEmail('');
+      } else {
+        toast.error('Failed to send email. Please check your email configuration.');
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
   // Reassign mutation
   const reassignMutation = trpc.routes.reassign.useMutation({
@@ -1764,6 +1868,10 @@ function SchedulePage() {
           </Button>
           <Button variant="outline" size="icon" onClick={goToNextWeek}>
             <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={() => setShowSummaryDialog(true)} className="ml-4">
+            <Mail className="h-4 w-4 mr-2" />
+            Email Summary
           </Button>
         </div>
       </div>
@@ -1944,36 +2052,40 @@ function SchedulePage() {
                           day={day}
                           isOver={isDropTarget}
                         >
-                          {dayRoutes.length > 0 ? (
-                            <div className="flex flex-col gap-1">
-                              {dayRoutes.map((route) => (
-                                <Badge
-                                  key={route.assignment.id}
-                                  variant="outline"
-                                  className={`text-[10px] justify-center cursor-grab ${
-                                    route.assignment.routeType === 'big-box'
-                                      ? 'border-orange-300 bg-orange-50 text-orange-700'
+                          <div 
+                            className="w-full h-full min-h-[24px] cursor-pointer hover:bg-muted/50 rounded transition-colors flex items-center justify-center"
+                            onClick={() => handleQuickAssignClick(driver, day, isAvailable)}
+                            title={`Click to assign route to ${driver.name} on ${day.toLocaleDateString()}`}
+                          >
+                            {dayRoutes.length > 0 ? (
+                              <div className="flex flex-col gap-1">
+                                {dayRoutes.map((route) => (
+                                  <Badge
+                                    key={route.assignment.id}
+                                    variant="outline"
+                                    className={`text-[10px] justify-center cursor-grab ${
+                                      route.assignment.routeType === 'big-box'
+                                        ? 'border-orange-300 bg-orange-50 text-orange-700'
+                                        : route.assignment.routeType === 'out-of-town'
+                                        ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                        : 'border-blue-300 bg-blue-50 text-blue-700'
+                                    }`}
+                                  >
+                                    {route.assignment.routeType === 'big-box'
+                                      ? 'BB'
                                       : route.assignment.routeType === 'out-of-town'
-                                      ? 'border-purple-300 bg-purple-50 text-purple-700'
-                                      : 'border-blue-300 bg-blue-50 text-blue-700'
-                                  }`}
-                                >
-                                  {route.assignment.routeType === 'big-box'
-                                    ? 'BB'
-                                    : route.assignment.routeType === 'out-of-town'
-                                    ? 'OT'
-                                    : 'REG'}
-                                  {route.van && ` ${route.van.name}`}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : isAvailable ? (
-                            <div className="flex justify-center">
+                                      ? 'OT'
+                                      : 'REG'}
+                                    {route.van && ` ${route.van.name}`}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : isAvailable ? (
                               <div className="h-2 w-2 rounded-full bg-green-500" title="Available" />
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </div>
                         </DroppableDriverCell>
                       );
                     })}
@@ -2027,6 +2139,143 @@ function SchedulePage() {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Quick Assign Dialog */}
+      <Dialog open={quickAssignOpen} onOpenChange={setQuickAssignOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Quick Assign Route</DialogTitle>
+            <DialogDescription>
+              Assign a route to {quickAssignData?.driverName} on{' '}
+              {quickAssignData?.date && new Date(quickAssignData.date + 'T12:00:00').toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Availability Warning */}
+          {quickAssignData && !quickAssignData.isAvailable && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+              <div className="text-sm">
+                <strong>Warning:</strong> {quickAssignData.driverName} has not marked themselves as available on this day.
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Route Type</Label>
+              <Select
+                value={quickAssignForm.routeType}
+                onValueChange={(value: 'regular' | 'big-box' | 'out-of-town') =>
+                  setQuickAssignForm({ ...quickAssignForm, routeType: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="regular">Regular</SelectItem>
+                  <SelectItem value="big-box">Big Box</SelectItem>
+                  <SelectItem value="out-of-town">Out of Town</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Van (Optional)</Label>
+              <Select
+                value={quickAssignForm.vanId}
+                onValueChange={(value) =>
+                  setQuickAssignForm({ ...quickAssignForm, vanId: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a van" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vans?.filter((v) => v.isActive).map((van) => (
+                    <SelectItem key={van.id} value={van.id.toString()}>
+                      {van.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Notes (Optional)</Label>
+              <Input
+                placeholder="Add notes..."
+                value={quickAssignForm.notes}
+                onChange={(e) =>
+                  setQuickAssignForm({ ...quickAssignForm, notes: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQuickAssignOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleQuickAssignSubmit}
+              disabled={assignMutation.isPending}
+            >
+              {assignMutation.isPending ? 'Assigning...' : 'Assign Route'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Summary Dialog */}
+      <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Send Weekly Availability Summary</DialogTitle>
+            <DialogDescription>
+              Send an email summary of driver availability for the upcoming week.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Email Address</Label>
+              <Input
+                type="email"
+                placeholder="admin@example.com"
+                value={summaryEmail}
+                onChange={(e) => setSummaryEmail(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                The summary will include availability for the week starting{' '}
+                {(() => {
+                  const today = new Date();
+                  const dayOfWeek = today.getDay();
+                  const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek);
+                  const nextMonday = new Date(today);
+                  nextMonday.setDate(today.getDate() + daysUntilMonday);
+                  return nextMonday.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                })()}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSummaryDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => sendSummaryMutation.mutate({ adminEmail: summaryEmail })}
+              disabled={!summaryEmail || sendSummaryMutation.isPending}
+            >
+              {sendSummaryMutation.isPending ? 'Sending...' : 'Send Summary'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -193,3 +193,110 @@ export async function sendLoginCode(
     `,
   });
 }
+
+/**
+ * Send weekly availability summary email to admin
+ */
+export async function sendWeeklyAvailabilitySummary(
+  adminEmail: string,
+  weekData: {
+    weekStart: string;
+    weekEnd: string;
+    drivers: Array<{
+      name: string;
+      availability: Array<{ date: string; isAvailable: boolean }>;
+    }>;
+  }
+): Promise<boolean> {
+  if (!adminEmail) {
+    console.warn('[Email] No admin email provided for weekly summary');
+    return false;
+  }
+
+  const weekStartDate = new Date(weekData.weekStart + 'T12:00:00');
+  const weekEndDate = new Date(weekData.weekEnd + 'T12:00:00');
+  
+  const formatDate = (date: Date) => date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  // Generate day headers
+  const days: string[] = [];
+  const dayDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStartDate);
+    d.setDate(weekStartDate.getDate() + i);
+    days.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
+    dayDates.push(d.toISOString().split('T')[0]);
+  }
+
+  // Build driver rows
+  const driverRows = weekData.drivers.map(driver => {
+    const cells = dayDates.map(date => {
+      const avail = driver.availability.find(a => {
+        const availDate = typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0];
+        return availDate === date;
+      });
+      if (avail?.isAvailable) {
+        return '<td style="text-align: center; padding: 8px; background: #dcfce7; color: #166534;">✓</td>';
+      } else if (avail && !avail.isAvailable) {
+        return '<td style="text-align: center; padding: 8px; background: #fee2e2; color: #991b1b;">✗</td>';
+      }
+      return '<td style="text-align: center; padding: 8px; background: #f5f5f5; color: #999;">-</td>';
+    }).join('');
+    return `<tr><td style="padding: 8px; font-weight: 500; border-right: 1px solid #e5e5e5;">${driver.name}</td>${cells}</tr>`;
+  }).join('');
+
+  // Count available drivers per day
+  const availableCounts = dayDates.map(date => {
+    return weekData.drivers.filter(driver => 
+      driver.availability.some(a => {
+        const availDate = typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0];
+        return availDate === date && a.isAvailable;
+      })
+    ).length;
+  });
+
+  const summaryRow = availableCounts.map(count => 
+    `<td style="text-align: center; padding: 8px; font-weight: bold; background: #f0f9ff; color: #0369a1;">${count}</td>`
+  ).join('');
+
+  const subject = `Weekly Driver Availability: ${formatDate(weekStartDate)} - ${formatDate(weekEndDate)}`;
+  const html = `
+    <div style="font-family: sans-serif; max-width: 800px; margin: 0 auto;">
+      <h2 style="color: #1a1a1a;">Weekly Driver Availability Summary</h2>
+      <p style="color: #666; margin-bottom: 20px;">${formatDate(weekStartDate)} - ${formatDate(weekEndDate)}</p>
+      
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e5e5;">
+        <thead>
+          <tr style="background: #f8fafc;">
+            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e5e5e5; border-right: 1px solid #e5e5e5;">Driver</th>
+            ${days.map(day => `<th style="padding: 10px; text-align: center; border-bottom: 2px solid #e5e5e5;">${day}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${driverRows}
+          <tr style="border-top: 2px solid #e5e5e5;">
+            <td style="padding: 8px; font-weight: bold; border-right: 1px solid #e5e5e5;">Total Available</td>
+            ${summaryRow}
+          </tr>
+        </tbody>
+      </table>
+      
+      <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+        <p style="margin: 0; font-size: 14px; color: #666;">
+          <span style="display: inline-block; width: 20px; height: 20px; background: #dcfce7; border-radius: 4px; vertical-align: middle; margin-right: 5px;"></span> Available
+          <span style="display: inline-block; width: 20px; height: 20px; background: #fee2e2; border-radius: 4px; vertical-align: middle; margin-left: 15px; margin-right: 5px;"></span> Not Available
+          <span style="display: inline-block; width: 20px; height: 20px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; vertical-align: middle; margin-left: 15px; margin-right: 5px;"></span> Not Set
+        </p>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+      <p style="color: #666; font-size: 12px;">Driver Scheduling System</p>
+    </div>
+  `;
+
+  return sendEmail({ to: adminEmail, subject, html });
+}

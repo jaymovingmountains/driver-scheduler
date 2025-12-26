@@ -4,7 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
-import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode } from "./notifications";
+import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode, sendWeeklyAvailabilitySummary } from "./notifications";
 
 // Cookie names
 const ADMIN_COOKIE_NAME = 'admin_session';
@@ -653,6 +653,57 @@ export const appRouter = router({
       }).optional())
       .query(async ({ input }) => {
         return db.getNotificationLogs(input?.driverId, input?.limit);
+      }),
+
+    sendWeeklySummary: adminProcedure
+      .input(z.object({
+        adminEmail: z.string().email(),
+        weekStart: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // Calculate week start (next Monday if not provided)
+        let weekStart: Date;
+        if (input.weekStart) {
+          weekStart = new Date(input.weekStart + 'T12:00:00');
+        } else {
+          // Get next Monday
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+          const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek);
+          weekStart = new Date(today);
+          weekStart.setDate(today.getDate() + daysUntilMonday);
+        }
+        
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        
+        const startDateStr = weekStart.toISOString().split('T')[0];
+        const endDateStr = weekEnd.toISOString().split('T')[0];
+        
+        // Get all drivers and their availability
+        const drivers = await db.getAllDrivers();
+        const activeDrivers = drivers.filter(d => d.status === 'active');
+        
+        const driversWithAvailability = await Promise.all(
+          activeDrivers.map(async (driver) => {
+            const avail = await db.getDriverAvailability(driver.id, startDateStr, endDateStr);
+            return {
+              name: driver.name,
+              availability: avail.map(a => ({
+                date: typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0],
+                isAvailable: a.isAvailable,
+              })),
+            };
+          })
+        );
+        
+        const success = await sendWeeklyAvailabilitySummary(input.adminEmail, {
+          weekStart: startDateStr,
+          weekEnd: endDateStr,
+          drivers: driversWithAvailability,
+        });
+        
+        return { success, weekStart: startDateStr, weekEnd: endDateStr };
       }),
   }),
 
