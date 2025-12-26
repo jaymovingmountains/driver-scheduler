@@ -176,3 +176,6 @@
 ## Remember Me Feature
 - [x] Add Remember me checkbox to driver login page
 - [x] Store preference and extend session duration when checked (90 days vs 1 day)
+
+## Email Improvements
+- [x] Include website link (driversched.com) in driver invite email

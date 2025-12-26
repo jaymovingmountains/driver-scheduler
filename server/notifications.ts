@@ -138,11 +138,12 @@ export async function sendDriverInvitation(
     return false;
   }
 
-  const subject = 'Welcome to Driver Scheduling System';
+  const websiteUrl = 'https://driversched.com';
+  const subject = 'Welcome to Moving Mountains Logistics Driver Portal';
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #1a1a1a;">Welcome, ${name}!</h2>
-      <p style="color: #333; line-height: 1.6;">You have been invited to join the Driver Scheduling System.</p>
+      <p style="color: #333; line-height: 1.6;">You have been invited to join the Moving Mountains Logistics Driver Portal.</p>
       
       <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p style="margin: 0 0 10px 0;"><strong>Your Phone Number:</strong> ${phone}</p>
@@ -152,10 +153,20 @@ export async function sendDriverInvitation(
         </div>
       </div>
       
-      <p style="color: #333; line-height: 1.6;">Use your phone number and this code to log in to the Driver Portal.</p>
+      <p style="color: #333; line-height: 1.6;">To get started:</p>
+      <ol style="color: #333; line-height: 1.8;">
+        <li>Go to <a href="${websiteUrl}" style="color: #ea580c; font-weight: bold;">${websiteUrl}</a></li>
+        <li>Click "Sign In"</li>
+        <li>Enter your phone number: <strong>${phone}</strong></li>
+        <li>Enter your login code shown above</li>
+      </ol>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${websiteUrl}" style="display: inline-block; background: linear-gradient(to right, #f97316, #dc2626); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Go to Driver Portal</a>
+      </div>
       
       <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-      <p style="color: #666; font-size: 12px;">Driver Scheduling System</p>
+      <p style="color: #666; font-size: 12px;">Moving Mountains Logistics - Driver Scheduling System</p>
     </div>
   `;
 
