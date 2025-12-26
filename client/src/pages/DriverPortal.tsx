@@ -61,6 +61,7 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Cooldown timer for resend button
@@ -109,7 +110,7 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
 
   const handleVerifyCode = () => {
     if (code.length === 6) {
-      verifyCodeMutation.mutate({ phone, code });
+      verifyCodeMutation.mutate({ phone, code, rememberMe });
     }
   };
 
@@ -173,6 +174,18 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
                 <p className="text-xs text-muted-foreground text-center">
                   Code sent to {phone}
                 </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
+                  Remember me for 90 days
+                </Label>
               </div>
               <Button
                 className="w-full"

@@ -172,3 +172,7 @@
 ## Branding Update
 - [x] Add MML logo to landing page
 - [x] Update color scheme to match logo (orange/red gradient)
+
+## Remember Me Feature
+- [x] Add Remember me checkbox to driver login page
+- [x] Store preference and extend session duration when checked (90 days vs 1 day)

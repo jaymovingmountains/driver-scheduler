@@ -254,6 +254,7 @@ export const appRouter = router({
       .input(z.object({ 
         phone: z.string().min(10),
         code: z.string().length(6),
+        rememberMe: z.boolean().optional().default(false),
       }))
       .mutation(async ({ input, ctx }) => {
         const ipAddress = ctx.req.headers['x-forwarded-for'] as string || ctx.req.socket?.remoteAddress || undefined;
@@ -290,9 +291,13 @@ export const appRouter = router({
         const token = await db.createDriverSession(driver.id);
         
         const cookieOptions = getSessionCookieOptions(ctx.req);
+        // If rememberMe is true, extend session to 90 days, otherwise 1 day
+        const maxAge = input.rememberMe 
+          ? 90 * 24 * 60 * 60 * 1000  // 90 days
+          : 1 * 24 * 60 * 60 * 1000;  // 1 day
         ctx.res.cookie(DRIVER_COOKIE_NAME, token, {
           ...cookieOptions,
-          maxAge: 30 * 24 * 60 * 60 * 1000,
+          maxAge,
         });
         
         // Return token for client-side storage (for preview environment)
