@@ -77,37 +77,44 @@ export const appRouter = router({
   
   // ============ ADMIN AUTH (Username/Password) ============
   adminAuth: router({
-    // Check if admin exists (for initial setup)
-    exists: publicProcedure.query(async () => {
-      return db.adminExists();
+    // Get admin email (for display on login page)
+    getAdminEmail: publicProcedure.query(() => {
+      return { email: db.ADMIN_EMAIL };
     }),
 
-    // Setup initial admin (only works if no admin exists)
-    setup: publicProcedure
+    // Send login code to admin email
+    sendCode: publicProcedure
       .input(z.object({
-        username: z.string().min(3),
-        password: z.string().min(6),
+        email: z.string().email(),
       }))
       .mutation(async ({ input }) => {
-        const exists = await db.adminExists();
-        if (exists) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Admin already exists' });
+        // Only allow the hardcoded admin email
+        if (input.email.toLowerCase() !== db.ADMIN_EMAIL.toLowerCase()) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'This email is not authorized as admin' });
         }
         
-        await db.createAdminCredential(input.username, input.password);
-        return { success: true };
+        // Get or create admin
+        const admin = await db.getOrCreateAdmin();
+        
+        // Generate and save login code
+        const loginCode = await db.setAdminLoginCode(admin.id);
+        
+        // Send code via email
+        await sendLoginCode(input.email, loginCode);
+        
+        return { success: true, message: 'Login code sent to your email' };
       }),
 
-    // Admin login
-    login: publicProcedure
+    // Verify login code and create session
+    verifyCode: publicProcedure
       .input(z.object({
-        username: z.string(),
-        password: z.string(),
+        email: z.string().email(),
+        code: z.string().length(6),
       }))
       .mutation(async ({ input, ctx }) => {
-        const admin = await db.verifyAdminPassword(input.username, input.password);
+        const admin = await db.verifyAdminLoginCode(input.email, input.code);
         if (!admin) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid username or password' });
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired login code' });
         }
         
         const token = await db.createAdminSession(admin.id);
@@ -120,7 +127,7 @@ export const appRouter = router({
         });
         
         // Also return token for client-side storage (for preview environment)
-        return { success: true, token, admin: { id: admin.id, username: admin.username } };
+        return { success: true, token, admin: { id: admin.id, email: admin.email } };
       }),
 
     // Get current admin
@@ -138,12 +145,18 @@ export const appRouter = router({
       const session = await db.getAdminBySessionToken(token);
       if (!session) return null;
       
-      return { id: session.admin.id, username: session.admin.username };
+      return { id: session.admin.id, email: session.admin.email };
     }),
 
     // Admin logout
     logout: publicProcedure.mutation(async ({ ctx }) => {
-      const token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+      let token = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+      if (!token) {
+        const authHeader = ctx.req.headers.authorization;
+        if (authHeader?.startsWith('Bearer ')) {
+          token = authHeader.slice(7);
+        }
+      }
       if (token) {
         await db.deleteAdminSession(token);
       }
@@ -152,22 +165,6 @@ export const appRouter = router({
       ctx.res.clearCookie(ADMIN_COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true };
     }),
-
-    // Change password
-    changePassword: adminProcedure
-      .input(z.object({
-        currentPassword: z.string(),
-        newPassword: z.string().min(6),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        const admin = await db.verifyAdminPassword((ctx as any).admin.username, input.currentPassword);
-        if (!admin) {
-          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Current password is incorrect' });
-        }
-        
-        await db.updateAdminPassword(admin.id, input.newPassword);
-        return { success: true };
-      }),
   }),
 
   // Keep old auth for compatibility but it won't be used

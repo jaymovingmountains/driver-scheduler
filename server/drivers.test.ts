@@ -29,14 +29,14 @@ vi.mock("./db", () => ({
   setAvailability: vi.fn(),
   getDb: vi.fn(),
   getDriverRouteAssignments: vi.fn(),
-  // Admin auth functions
-  adminExists: vi.fn(),
-  createAdminCredential: vi.fn(),
-  verifyAdminPassword: vi.fn(),
+  // Admin auth functions (email-based)
+  ADMIN_EMAIL: "jay@movingmountainslogistics.com",
+  getOrCreateAdmin: vi.fn(),
+  setAdminLoginCode: vi.fn(),
+  verifyAdminLoginCode: vi.fn(),
   createAdminSession: vi.fn(),
   getAdminBySessionToken: vi.fn(),
   deleteAdminSession: vi.fn(),
-  updateAdminPassword: vi.fn(),
 }));
 
 // Mock notifications
@@ -438,57 +438,72 @@ describe("adminAuth router", () => {
     vi.clearAllMocks();
   });
 
-  describe("adminAuth.exists", () => {
-    it("returns true if admin exists", async () => {
-      vi.mocked(db.adminExists).mockResolvedValue(true);
-
+  describe("adminAuth.getAdminEmail", () => {
+    it("returns the hardcoded admin email", async () => {
       const ctx = createUnauthenticatedContext();
       const caller = appRouter.createCaller(ctx);
 
-      const result = await caller.adminAuth.exists();
-      expect(result).toBe(true);
-    });
-
-    it("returns false if no admin", async () => {
-      vi.mocked(db.adminExists).mockResolvedValue(false);
-
-      const ctx = createUnauthenticatedContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.adminAuth.exists();
-      expect(result).toBe(false);
+      const result = await caller.adminAuth.getAdminEmail();
+      expect(result.email).toBe("jay@movingmountainslogistics.com");
     });
   });
 
-  describe("adminAuth.login", () => {
-    it("logs in with valid credentials", async () => {
-      vi.mocked(db.verifyAdminPassword).mockResolvedValue({ id: 1, username: "admin" } as any);
+  describe("adminAuth.sendCode", () => {
+    it("sends code to authorized admin email", async () => {
+      vi.mocked(db.getOrCreateAdmin).mockResolvedValue({ id: 1, email: "jay@movingmountainslogistics.com" } as any);
+      vi.mocked(db.setAdminLoginCode).mockResolvedValue("123456");
+
+      const ctx = createUnauthenticatedContext();
+      const caller = appRouter.createCaller(ctx);
+
+      const result = await caller.adminAuth.sendCode({
+        email: "jay@movingmountainslogistics.com",
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it("throws error for unauthorized email", async () => {
+      const ctx = createUnauthenticatedContext();
+      const caller = appRouter.createCaller(ctx);
+
+      await expect(
+        caller.adminAuth.sendCode({
+          email: "unauthorized@example.com",
+        })
+      ).rejects.toThrow("This email is not authorized as admin");
+    });
+  });
+
+  describe("adminAuth.verifyCode", () => {
+    it("verifies valid code and creates session", async () => {
+      vi.mocked(db.verifyAdminLoginCode).mockResolvedValue({ id: 1, email: "jay@movingmountainslogistics.com" } as any);
       vi.mocked(db.createAdminSession).mockResolvedValue("session-token");
 
       const ctx = createUnauthenticatedContext();
       const caller = appRouter.createCaller(ctx);
 
-      const result = await caller.adminAuth.login({
-        username: "admin",
-        password: "password123",
+      const result = await caller.adminAuth.verifyCode({
+        email: "jay@movingmountainslogistics.com",
+        code: "123456",
       });
 
       expect(result.success).toBe(true);
-      expect(result.admin.username).toBe("admin");
+      expect(result.admin.email).toBe("jay@movingmountainslogistics.com");
     });
 
-    it("throws error for invalid credentials", async () => {
-      vi.mocked(db.verifyAdminPassword).mockResolvedValue(null);
+    it("throws error for invalid code", async () => {
+      vi.mocked(db.verifyAdminLoginCode).mockResolvedValue(null);
 
       const ctx = createUnauthenticatedContext();
       const caller = appRouter.createCaller(ctx);
 
       await expect(
-        caller.adminAuth.login({
-          username: "admin",
-          password: "wrongpassword",
+        caller.adminAuth.verifyCode({
+          email: "jay@movingmountainslogistics.com",
+          code: "000000",
         })
-      ).rejects.toThrow("Invalid username or password");
+      ).rejects.toThrow("Invalid or expired login code");
     });
   });
 

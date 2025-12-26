@@ -82,3 +82,14 @@
 - [x] Remove OAuth login page from home page
 - [x] Disable global OAuth redirect on unauthorized errors
 - [x] Make home page and driver portal publicly accessible
+
+## UI Improvements
+- [x] Add search bar to driver list to filter by name or email (already implemented)
+
+## Admin Email-Based Login
+- [x] Update admin credentials table to store email and login code
+- [x] Hardcode admin email: jay@movingmountainslogistics.com
+- [x] Create endpoint to send login code to admin email
+- [x] Create endpoint to verify admin login code
+- [x] Update admin login UI to use email and code flow
+- [x] Remove password-based authentication

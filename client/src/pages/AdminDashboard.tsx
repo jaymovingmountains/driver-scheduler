@@ -105,24 +105,17 @@ export default function AdminDashboard() {
   
   const utils = trpc.useUtils();
   const { data: admin, isLoading } = trpc.adminAuth.me.useQuery();
-  const { data: adminExists, isLoading: checkingExists } = trpc.adminAuth.exists.useQuery();
   
   const handleAuthSuccess = async () => {
     await utils.adminAuth.me.invalidate();
-    await utils.adminAuth.exists.invalidate();
   };
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (isLoading || checkingExists) {
+  if (isLoading) {
     return <DashboardLayoutSkeleton />;
-  }
-
-  // Show setup form if no admin exists yet
-  if (!adminExists) {
-    return <AdminSetup onSuccess={handleAuthSuccess} />;
   }
 
   // Show login form if not authenticated
@@ -148,116 +141,29 @@ export default function AdminDashboard() {
   );
 }
 
-// Admin Setup Component (first-time setup)
-function AdminSetup({ onSuccess }: { onSuccess: () => void }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-
-  const setupMutation = trpc.adminAuth.setup.useMutation({
-    onSuccess: () => {
-      toast.success("Admin account created! Please sign in.");
-      onSuccess();
-    },
-    onError: (error) => {
-      toast.error("Setup failed", { description: error.message });
-    },
-  });
-
-  const handleSetup = () => {
-    if (password !== confirmPassword) {
-      toast.error("Passwords don't match");
-      return;
-    }
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    setupMutation.mutate({ username, password });
-  };
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto p-3 bg-primary/10 rounded-full w-fit mb-4">
-            <Shield className="h-8 w-8 text-primary" />
-          </div>
-          <CardTitle className="text-2xl">Setup Admin Account</CardTitle>
-          <CardDescription>
-            Create your admin credentials to get started
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              placeholder="admin"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </div>
-          <Button
-            className="w-full"
-            onClick={handleSetup}
-            disabled={!username || !password || !confirmPassword || setupMutation.isPending}
-          >
-            {setupMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              "Create Admin Account"
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// Admin Login Component
+// Admin Login Component (email-based code login)
 function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
 
   const utils = trpc.useUtils();
   
-  const loginMutation = trpc.adminAuth.login.useMutation({
-    onSuccess: async (data) => {
+  // Get the admin email to display
+  const { data: adminEmailData } = trpc.adminAuth.getAdminEmail.useQuery();
+  
+  const sendCodeMutation = trpc.adminAuth.sendCode.useMutation({
+    onSuccess: () => {
+      toast.success("Login code sent to your email");
+      setStep("code");
+    },
+    onError: (error: any) => {
+      toast.error("Failed to send code", { description: error.message });
+    },
+  });
+
+  const verifyCodeMutation = trpc.adminAuth.verifyCode.useMutation({
+    onSuccess: async (data: any) => {
       // Store token in localStorage for Authorization header
       if (data.token) {
         localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
@@ -267,17 +173,31 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
       await utils.adminAuth.me.refetch();
       onSuccess();
     },
-    onError: (error) => {
-      toast.error("Login failed", { description: error.message });
+    onError: (error: any) => {
+      toast.error("Invalid code", { description: error.message });
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSendCode = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username && password && !loginMutation.isPending) {
-      loginMutation.mutate({ username, password });
+    if (email && !sendCodeMutation.isPending) {
+      sendCodeMutation.mutate({ email });
     }
   };
+
+  const handleVerifyCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code.length === 6 && !verifyCodeMutation.isPending) {
+      verifyCodeMutation.mutate({ email, code });
+    }
+  };
+
+  // Pre-fill email if we have it
+  useEffect(() => {
+    if (adminEmailData?.email && !email) {
+      setEmail(adminEmailData.email);
+    }
+  }, [adminEmailData?.email, email]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -288,56 +208,106 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
           </div>
           <CardTitle className="text-2xl">Admin Login</CardTitle>
           <CardDescription>
-            Sign in to manage drivers and routes
+            {step === "email" 
+              ? "Enter your admin email to receive a login code" 
+              : "Enter the 6-digit code sent to your email"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                placeholder="admin"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+          {step === "email" ? (
+            <form onSubmit={handleSendCode} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Admin Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="admin@example.com"
+                    className="pl-10"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+                {adminEmailData?.email && (
+                  <p className="text-xs text-muted-foreground">
+                    Authorized admin: {adminEmailData.email}
+                  </p>
+                )}
               </div>
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={!username || !password || loginMutation.isPending}
-            >
-              {loginMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign In"
-              )}
-            </Button>
-          </form>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={!email || sendCodeMutation.isPending}
+              >
+                {sendCodeMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending code...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send Login Code
+                  </>
+                )}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyCode} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="code">Login Code</Label>
+                <Input
+                  id="code"
+                  type="text"
+                  placeholder="000000"
+                  maxLength={6}
+                  className="text-center text-2xl tracking-widest font-mono"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  autoComplete="one-time-code"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Code sent to {email}
+                </p>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={code.length !== 6 || verifyCodeMutation.isPending}
+              >
+                {verifyCodeMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setStep("email");
+                  setCode("");
+                }}
+              >
+                Use different email
+              </Button>
+              <Button
+                type="button"
+                variant="link"
+                className="w-full text-sm"
+                onClick={() => sendCodeMutation.mutate({ email })}
+                disabled={sendCodeMutation.isPending}
+              >
+                Resend code
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -351,7 +321,7 @@ function AdminContent({
   setSidebarWidth,
   onLogout 
 }: { 
-  admin: { id: number; username: string }; 
+  admin: { id: number; email: string }; 
   sidebarWidth: number;
   setSidebarWidth: (w: number) => void;
   onLogout: () => void;
@@ -436,12 +406,12 @@ function AdminContent({
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
                     <AvatarFallback className="text-xs font-medium bg-primary text-primary-foreground">
-                      {admin.username.charAt(0).toUpperCase()}
+                      {admin.email.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">{admin.username}</p>
-                    <p className="text-xs text-muted-foreground truncate mt-1.5">Administrator</p>
+                    <p className="text-sm font-medium truncate leading-none">Admin</p>
+                    <p className="text-xs text-muted-foreground truncate mt-1.5">{admin.email}</p>
                   </div>
                 </button>
               </DropdownMenuTrigger>

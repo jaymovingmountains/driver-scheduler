@@ -456,46 +456,79 @@ export async function getNotificationLogs(driverId?: number, limit: number = 50)
 
 // ============ ADMIN AUTH HELPERS ============
 
-const SALT_ROUNDS = 10;
+// Hardcoded admin email - only this email can access admin dashboard
+export const ADMIN_EMAIL = "jay@movingmountainslogistics.com";
 
-export async function createAdminCredential(username: string, password: string) {
+export async function getOrCreateAdmin() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  // Check if admin exists
+  const existing = await db.select().from(adminCredentials)
+    .where(eq(adminCredentials.email, ADMIN_EMAIL))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    return existing[0];
+  }
+  
+  // Create admin if doesn't exist
   const result = await db.insert(adminCredentials).values({
-    username,
-    passwordHash,
+    email: ADMIN_EMAIL,
   });
-  return result[0].insertId;
+  
+  const newAdmin = await db.select().from(adminCredentials)
+    .where(eq(adminCredentials.id, result[0].insertId))
+    .limit(1);
+  
+  return newAdmin[0];
 }
 
-export async function getAdminByUsername(username: string) {
+export async function getAdminByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
   
   const result = await db.select().from(adminCredentials)
-    .where(eq(adminCredentials.username, username))
+    .where(eq(adminCredentials.email, email))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function verifyAdminPassword(username: string, password: string) {
-  const admin = await getAdminByUsername(username);
-  if (!admin) return null;
-  
-  const isValid = await bcrypt.compare(password, admin.passwordHash);
-  return isValid ? admin : null;
-}
-
-export async function updateAdminPassword(adminId: number, newPassword: string) {
+export async function setAdminLoginCode(adminId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
-  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const loginCodeExpiry = new Date();
+  loginCodeExpiry.setMinutes(loginCodeExpiry.getMinutes() + 15); // 15 minute expiry
+  
   await db.update(adminCredentials)
-    .set({ passwordHash })
+    .set({ loginCode, loginCodeExpiry })
     .where(eq(adminCredentials.id, adminId));
+  
+  return loginCode;
+}
+
+export async function verifyAdminLoginCode(email: string, code: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(adminCredentials)
+    .where(and(
+      eq(adminCredentials.email, email),
+      eq(adminCredentials.loginCode, code),
+      sql`${adminCredentials.loginCodeExpiry} > NOW()`
+    ))
+    .limit(1);
+  
+  if (result.length === 0) return null;
+  
+  // Clear the login code after successful verification
+  await db.update(adminCredentials)
+    .set({ loginCode: null, loginCodeExpiry: null })
+    .where(eq(adminCredentials.id, result[0].id));
+  
+  return result[0];
 }
 
 export async function createAdminSession(adminId: number) {

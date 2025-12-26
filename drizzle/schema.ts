@@ -120,12 +120,13 @@ export type DriverSession = typeof driverSessions.$inferSelect;
 export type InsertDriverSession = typeof driverSessions.$inferInsert;
 
 /**
- * Admin credentials - simple username/password for admin login
+ * Admin credentials - email-based login with codes
  */
 export const adminCredentials = mysqlTable("admin_credentials", {
   id: int("id").autoincrement().primaryKey(),
-  username: varchar("username", { length: 100 }).notNull().unique(),
-  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  loginCode: varchar("loginCode", { length: 6 }),
+  loginCodeExpiry: timestamp("loginCodeExpiry"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
