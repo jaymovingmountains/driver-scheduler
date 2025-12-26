@@ -133,3 +133,6 @@
 - [x] Log successful login attempts
 - [x] Add Security Logs page to admin dashboard
 - [x] Display login attempts with filtering options
+
+## Bug Fixes
+- [x] Fix driver login code email message - now shows accurate error about Resend domain verification

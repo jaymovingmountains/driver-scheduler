@@ -1,0 +1,38 @@
+{
+  "query": "SELECT id, name, phone, email, status FROM drivers;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3oXttedmSnHmcsz.bd46c986fa5e --database f37HqjfCSpuJ7MP24h3MR2 --execute SELECT id, name, phone, email, status FROM drivers;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Test Driver",
+      "phone": "5551234567",
+      "email": "testdriver@example.com",
+      "status": "active"
+    },
+    {
+      "id": "2",
+      "name": "Jay",
+      "phone": "2365654019",
+      "email": "NULL",
+      "status": "pending"
+    },
+    {
+      "id": "30001",
+      "name": "Jay",
+      "phone": "+12365654019",
+      "email": "jay@movingmountainslogistics.com",
+      "status": "active"
+    },
+    {
+      "id": "60001",
+      "name": "Tiffany",
+      "phone": "2503184607",
+      "email": "tiffany@movingmountainslogistics.com",
+      "status": "pending"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tphone\temail\tstatus\n1\tTest Driver\t5551234567\ttestdriver@example.com\tactive\n2\tJay\t2365654019\tNULL\tpending\n30001\tJay\t+12365654019\tjay@movingmountainslogistics.com\tactive\n60001\tTiffany\t2503184607\ttiffany@movingmountainslogistics.com\tpending\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

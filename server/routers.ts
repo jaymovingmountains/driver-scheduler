@@ -233,11 +233,20 @@ export const appRouter = router({
         const code = generateLoginCode();
         await db.setDriverLoginCode(driver.id, code, 10);
         
-        const emailSent = driver.email ? await sendLoginCode(driver.email, code) : false;
+        let message = 'Code generated';
+        if (driver.email) {
+          const emailSent = await sendLoginCode(driver.email, code);
+          message = emailSent 
+            ? 'Code sent via email' 
+            : 'Code generated (email delivery failed - check Resend domain verification)';
+        } else {
+          message = 'Code generated (no email configured for this driver)';
+        }
         
         return { 
           success: true, 
-          message: emailSent ? 'Code sent via email' : 'Code generated (email not configured for this driver)',
+          message,
+          code: process.env.NODE_ENV === 'development' ? code : undefined, // Show code in dev for testing
         };
       }),
 
