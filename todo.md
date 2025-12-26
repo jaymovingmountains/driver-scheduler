@@ -98,3 +98,9 @@
 - [x] Add Resend Code button to admin login interface
 - [x] Add Resend Code button to driver login interface
 - [x] Add cooldown timer to prevent spam (60 seconds)
+
+## Route Assignment Feature
+- [x] Route assignment UI in admin dashboard
+- [x] Driver portal displays assigned routes
+- [x] Email notification for route assignments
+- [x] 24-hour advance notice validation
