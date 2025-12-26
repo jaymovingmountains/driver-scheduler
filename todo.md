@@ -136,3 +136,4 @@
 
 ## Bug Fixes
 - [x] Fix driver login code email message - now shows accurate error about Resend domain verification
+- [x] Update sender email to use verified domain movingmountainslogistics.com

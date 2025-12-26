@@ -26,7 +26,7 @@ export async function sendEmail({ to, subject, html, text }: SendEmailParams): P
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Driver Scheduler <noreply@resend.dev>',
+        from: 'Driver Scheduler <noreply@movingmountainslogistics.com>',
         to: [to],
         subject,
         html,
