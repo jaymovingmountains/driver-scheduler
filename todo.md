@@ -111,3 +111,13 @@
 - [x] Week navigation (previous/next week)
 - [x] Show driver availability status per day
 - [x] Quick view of assigned van for each route
+
+## Drag-and-Drop Route Reassignment
+- [x] Install drag-and-drop library (@dnd-kit)
+- [x] Add backend endpoint for route reassignment (update date/driver)
+- [x] Make route cards draggable in weekly calendar
+- [x] Create drop zones for each day column
+- [x] Create drop zones for each driver row in table
+- [x] Show visual feedback during drag operations
+- [x] Validate reassignment (driver availability, 24-hour notice)
+- [x] Update UI optimistically on successful drop

@@ -74,6 +74,7 @@ import {
   Route,
   Search,
   Shield,
+  GripVertical,
   Trash2,
   Truck,
   UserCheck,
@@ -81,10 +82,21 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "@/components/DashboardLayoutSkeleton";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable,
+} from "@dnd-kit/core";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/admin" },
@@ -1428,21 +1440,161 @@ function RoutesPage() {
   );
 }
 
-// Schedule Page Component - Weekly View
+// Draggable Route Card Component
+function DraggableRouteCard({ route, isDragging }: { route: any; isDragging?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: `route-${route.assignment.id}`,
+    data: { route },
+  });
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        zIndex: 1000,
+      }
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`p-2 rounded-lg text-xs border cursor-grab active:cursor-grabbing transition-shadow ${
+        route.assignment.routeType === 'big-box'
+          ? 'bg-orange-50 border-orange-200 hover:shadow-orange-200'
+          : route.assignment.routeType === 'out-of-town'
+          ? 'bg-purple-50 border-purple-200 hover:shadow-purple-200'
+          : 'bg-blue-50 border-blue-200 hover:shadow-blue-200'
+      } ${isDragging ? 'opacity-50' : 'hover:shadow-md'}`}
+      {...listeners}
+      {...attributes}
+    >
+      <div className="flex items-center gap-1 mb-1">
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
+        <div
+          className={`h-2 w-2 rounded-full ${
+            route.assignment.routeType === 'big-box'
+              ? 'bg-orange-500'
+              : route.assignment.routeType === 'out-of-town'
+              ? 'bg-purple-500'
+              : 'bg-blue-500'
+          }`}
+        />
+        <span className="font-medium truncate">{route.driver.name}</span>
+      </div>
+      <div className="text-muted-foreground">
+        {route.assignment.routeType === 'big-box'
+          ? 'Big Box'
+          : route.assignment.routeType === 'out-of-town'
+          ? 'Out of Town'
+          : 'Regular'}
+        {route.van && (
+          <span className="ml-1 px-1 py-0.5 bg-white rounded text-[10px]">
+            {route.van.name}
+          </span>
+        )}
+      </div>
+      {route.assignment.status !== 'assigned' && (
+        <Badge
+          variant={route.assignment.status === 'completed' ? 'default' : 'destructive'}
+          className="mt-1 text-[10px] h-4"
+        >
+          {route.assignment.status}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+// Droppable Day Column Component
+function DroppableDayColumn({ day, children, isOver }: { day: Date; children: React.ReactNode; isOver: boolean }) {
+  const dateStr = day.toISOString().split('T')[0];
+  const { setNodeRef } = useDroppable({
+    id: `day-${dateStr}`,
+    data: { date: dateStr, type: 'day' },
+  });
+
+  const isToday = day.toDateString() === new Date().toDateString();
+  const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
+  const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
+  const dayNum = day.getDate();
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[300px] flex flex-col transition-colors ${
+        isOver ? 'bg-primary/10 ring-2 ring-primary ring-inset' : ''
+      } ${
+        isToday ? 'bg-blue-50/50' : isPast ? 'bg-muted/30' : ''
+      }`}
+    >
+      {/* Day Header */}
+      <div className={`p-3 border-b text-center ${
+        isToday ? 'bg-blue-100' : 'bg-muted/50'
+      }`}>
+        <p className="text-xs font-medium text-muted-foreground uppercase">{dayName}</p>
+        <p className={`text-lg font-bold ${
+          isToday ? 'text-blue-600' : ''
+        }`}>{dayNum}</p>
+      </div>
+      {/* Day Content */}
+      <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Droppable Driver Cell Component
+function DroppableDriverCell({ driverId, day, children, isOver }: { 
+  driverId: number; 
+  day: Date; 
+  children: React.ReactNode; 
+  isOver: boolean;
+}) {
+  const dateStr = day.toISOString().split('T')[0];
+  const { setNodeRef } = useDroppable({
+    id: `driver-${driverId}-day-${dateStr}`,
+    data: { driverId, date: dateStr, type: 'driver-day' },
+  });
+
+  const isToday = day.toDateString() === new Date().toDateString();
+
+  return (
+    <TableCell
+      ref={setNodeRef}
+      className={`text-center p-1 transition-colors ${
+        isOver ? 'bg-primary/20 ring-2 ring-primary ring-inset' : ''
+      } ${
+        isToday ? 'bg-blue-50/50' : ''
+      }`}
+    >
+      {children}
+    </TableCell>
+  );
+}
+
+// Schedule Page Component - Weekly View with Drag and Drop
 function SchedulePage() {
+  const utils = trpc.useUtils();
+  
   // Get the start of the current week (Monday)
   const getWeekStart = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   };
 
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
+  const [activeRoute, setActiveRoute] = useState<any>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   
   // Calculate week end (Sunday)
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
+  const weekEnd = useMemo(() => {
+    const end = new Date(weekStart);
+    end.setDate(weekStart.getDate() + 6);
+    return end;
+  }, [weekStart]);
 
   // Format dates for API
   const startDateStr = weekStart.toISOString().split("T")[0];
@@ -1461,12 +1613,34 @@ function SchedulePage() {
 
   const { data: drivers } = trpc.drivers.list.useQuery();
 
-  // Generate array of days for the week
-  const weekDays = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(weekStart);
-    date.setDate(weekStart.getDate() + i);
-    return date;
+  // Reassign mutation
+  const reassignMutation = trpc.routes.reassign.useMutation({
+    onSuccess: () => {
+      utils.routes.list.invalidate();
+      toast.success('Route reassigned successfully');
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
   });
+
+  // Configure drag sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  // Generate array of days for the week
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + i);
+      return date;
+    });
+  }, [weekStart]);
 
   // Navigate to previous/next week
   const goToPreviousWeek = () => {
@@ -1516,6 +1690,60 @@ function SchedulePage() {
     return `${startStr} - ${endStr}`;
   };
 
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const route = active.data.current?.route;
+    if (route) {
+      setActiveRoute(route);
+    }
+  };
+
+  // Handle drag over
+  const handleDragOver = (event: any) => {
+    const { over } = event;
+    setOverId(over?.id || null);
+  };
+
+  // Handle drag end
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveRoute(null);
+    setOverId(null);
+
+    if (!over) return;
+
+    const route = active.data.current?.route;
+    const dropData = over.data.current;
+
+    if (!route || !dropData) return;
+
+    const routeId = route.assignment.id;
+    const currentDate = new Date(route.assignment.date).toISOString().split('T')[0];
+    const currentDriverId = route.driver.id;
+
+    let newDate: string | undefined;
+    let newDriverId: number | undefined;
+
+    if (dropData.type === 'day') {
+      // Dropped on a day column - change date only
+      newDate = dropData.date;
+    } else if (dropData.type === 'driver-day') {
+      // Dropped on a driver-day cell - change both driver and date
+      newDate = dropData.date;
+      newDriverId = dropData.driverId;
+    }
+
+    // Only reassign if something changed
+    if ((newDate && newDate !== currentDate) || (newDriverId && newDriverId !== currentDriverId)) {
+      reassignMutation.mutate({
+        id: routeId,
+        newDate: newDate !== currentDate ? newDate : undefined,
+        newDriverId: newDriverId !== currentDriverId ? newDriverId : undefined,
+      });
+    }
+  };
+
   const isLoading = routesLoading || availLoading;
 
   return (
@@ -1523,7 +1751,7 @@ function SchedulePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Weekly Schedule</h1>
-          <p className="text-muted-foreground">View driver assignments and availability at a glance</p>
+          <p className="text-muted-foreground">Drag routes to reassign them to different days or drivers</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={goToPreviousWeek}>
@@ -1556,89 +1784,43 @@ function SchedulePage() {
           <div className="h-3 w-3 rounded-full bg-green-500" />
           <span>Available</span>
         </div>
+        <div className="flex items-center gap-2 ml-4 text-muted-foreground">
+          <GripVertical className="h-4 w-4" />
+          <span>Drag to reassign</span>
+        </div>
       </div>
 
-      {/* Weekly Calendar Grid */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-7 divide-x">
-              {weekDays.map((day, index) => {
-                const dayRoutes = getRoutesForDate(day);
-                const availableDrivers = getAvailableDriversForDate(day);
-                const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
-                const dayNum = day.getDate();
-                const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        {/* Weekly Calendar Grid */}
+        <Card>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 divide-x">
+                {weekDays.map((day, index) => {
+                  const dayRoutes = getRoutesForDate(day);
+                  const availableDrivers = getAvailableDriversForDate(day);
+                  const dateStr = day.toISOString().split('T')[0];
+                  const isDropTarget = overId === `day-${dateStr}`;
 
-                return (
-                  <div
-                    key={index}
-                    className={`min-h-[300px] flex flex-col ${
-                      isToday(day) ? 'bg-blue-50/50' : isPast ? 'bg-muted/30' : ''
-                    }`}
-                  >
-                    {/* Day Header */}
-                    <div className={`p-3 border-b text-center ${
-                      isToday(day) ? 'bg-blue-100' : 'bg-muted/50'
-                    }`}>
-                      <p className="text-xs font-medium text-muted-foreground uppercase">{dayName}</p>
-                      <p className={`text-lg font-bold ${
-                        isToday(day) ? 'text-blue-600' : ''
-                      }`}>{dayNum}</p>
-                    </div>
-
-                    {/* Day Content */}
-                    <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+                  return (
+                    <DroppableDayColumn key={index} day={day} isOver={isDropTarget}>
                       {/* Assigned Routes */}
                       {dayRoutes.length > 0 ? (
                         dayRoutes.map((route) => (
-                          <div
+                          <DraggableRouteCard
                             key={route.assignment.id}
-                            className={`p-2 rounded-lg text-xs border ${
-                              route.assignment.routeType === 'big-box'
-                                ? 'bg-orange-50 border-orange-200'
-                                : route.assignment.routeType === 'out-of-town'
-                                ? 'bg-purple-50 border-purple-200'
-                                : 'bg-blue-50 border-blue-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-1 mb-1">
-                              <div
-                                className={`h-2 w-2 rounded-full ${
-                                  route.assignment.routeType === 'big-box'
-                                    ? 'bg-orange-500'
-                                    : route.assignment.routeType === 'out-of-town'
-                                    ? 'bg-purple-500'
-                                    : 'bg-blue-500'
-                                }`}
-                              />
-                              <span className="font-medium truncate">{route.driver.name}</span>
-                            </div>
-                            <div className="text-muted-foreground">
-                              {route.assignment.routeType === 'big-box'
-                                ? 'Big Box'
-                                : route.assignment.routeType === 'out-of-town'
-                                ? 'Out of Town'
-                                : 'Regular'}
-                              {route.van && (
-                                <span className="ml-1 px-1 py-0.5 bg-white rounded text-[10px]">
-                                  {route.van.name}
-                                </span>
-                              )}
-                            </div>
-                            {route.assignment.status !== 'assigned' && (
-                              <Badge
-                                variant={route.assignment.status === 'completed' ? 'default' : 'destructive'}
-                                className="mt-1 text-[10px] h-4"
-                              >
-                                {route.assignment.status}
-                              </Badge>
-                            )}
-                          </div>
+                            route={route}
+                            isDragging={activeRoute?.assignment.id === route.assignment.id}
+                          />
                         ))
                       ) : (
                         <p className="text-xs text-muted-foreground text-center py-2">No routes</p>
@@ -1668,143 +1850,181 @@ function SchedulePage() {
                           </div>
                         </div>
                       )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </DroppableDayColumn>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Summary Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Routes This Week</CardDescription>
-            <CardTitle className="text-3xl">{routes?.length || 0}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Regular Routes</CardDescription>
-            <CardTitle className="text-3xl text-blue-600">
-              {routes?.filter((r) => r.assignment.routeType === 'regular').length || 0}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Big Box Routes</CardDescription>
-            <CardTitle className="text-3xl text-orange-600">
-              {routes?.filter((r) => r.assignment.routeType === 'big-box').length || 0}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Out of Town Routes</CardDescription>
-            <CardTitle className="text-3xl text-purple-600">
-              {routes?.filter((r) => r.assignment.routeType === 'out-of-town').length || 0}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+        {/* Summary Stats */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total Routes This Week</CardDescription>
+              <CardTitle className="text-3xl">{routes?.length || 0}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Regular Routes</CardDescription>
+              <CardTitle className="text-3xl text-blue-600">
+                {routes?.filter((r) => r.assignment.routeType === 'regular').length || 0}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Big Box Routes</CardDescription>
+              <CardTitle className="text-3xl text-orange-600">
+                {routes?.filter((r) => r.assignment.routeType === 'big-box').length || 0}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Out of Town Routes</CardDescription>
+              <CardTitle className="text-3xl text-purple-600">
+                {routes?.filter((r) => r.assignment.routeType === 'out-of-town').length || 0}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
 
-      {/* Driver Assignment Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Driver Assignments This Week</CardTitle>
-          <CardDescription>Overview of all driver schedules</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[150px]">Driver</TableHead>
-                {weekDays.map((day, i) => (
-                  <TableHead key={i} className={`text-center ${
-                    isToday(day) ? 'bg-blue-50' : ''
-                  }`}>
-                    {day.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {drivers?.filter((d) => d.status === 'active').map((driver) => (
-                <TableRow key={driver.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-xs">
-                          {driver.name.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="truncate">{driver.name}</span>
-                    </div>
-                  </TableCell>
-                  {weekDays.map((day, i) => {
-                    const dayRoutes = getRoutesForDate(day).filter(
-                      (r) => r.driver.id === driver.id
-                    );
-                    const isAvailable = getAvailableDriversForDate(day).some(
-                      (d: any) => d.id === driver.id
-                    );
-
-                    return (
-                      <TableCell
-                        key={i}
-                        className={`text-center p-1 ${
-                          isToday(day) ? 'bg-blue-50/50' : ''
-                        }`}
-                      >
-                        {dayRoutes.length > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            {dayRoutes.map((route) => (
-                              <Badge
-                                key={route.assignment.id}
-                                variant="outline"
-                                className={`text-[10px] justify-center ${
-                                  route.assignment.routeType === 'big-box'
-                                    ? 'border-orange-300 bg-orange-50 text-orange-700'
-                                    : route.assignment.routeType === 'out-of-town'
-                                    ? 'border-purple-300 bg-purple-50 text-purple-700'
-                                    : 'border-blue-300 bg-blue-50 text-blue-700'
-                                }`}
-                              >
-                                {route.assignment.routeType === 'big-box'
-                                  ? 'BB'
-                                  : route.assignment.routeType === 'out-of-town'
-                                  ? 'OT'
-                                  : 'REG'}
-                                {route.van && ` ${route.van.name}`}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : isAvailable ? (
-                          <div className="flex justify-center">
-                            <div className="h-2 w-2 rounded-full bg-green-500" title="Available" />
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))}
-              {(!drivers || drivers.filter((d) => d.status === 'active').length === 0) && (
+        {/* Driver Assignment Table with Drop Zones */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Driver Assignments This Week</CardTitle>
+            <CardDescription>Drop routes on a cell to reassign to that driver and day</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No active drivers
-                  </TableCell>
+                  <TableHead className="w-[150px]">Driver</TableHead>
+                  {weekDays.map((day, i) => (
+                    <TableHead key={i} className={`text-center ${
+                      isToday(day) ? 'bg-blue-50' : ''
+                    }`}>
+                      {day.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+                    </TableHead>
+                  ))}
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {drivers?.filter((d) => d.status === 'active').map((driver) => (
+                  <TableRow key={driver.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-xs">
+                            {driver.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">{driver.name}</span>
+                      </div>
+                    </TableCell>
+                    {weekDays.map((day, i) => {
+                      const dayRoutes = getRoutesForDate(day).filter(
+                        (r) => r.driver.id === driver.id
+                      );
+                      const isAvailable = getAvailableDriversForDate(day).some(
+                        (d: any) => d.id === driver.id
+                      );
+                      const dateStr = day.toISOString().split('T')[0];
+                      const isDropTarget = overId === `driver-${driver.id}-day-${dateStr}`;
+
+                      return (
+                        <DroppableDriverCell
+                          key={i}
+                          driverId={driver.id}
+                          day={day}
+                          isOver={isDropTarget}
+                        >
+                          {dayRoutes.length > 0 ? (
+                            <div className="flex flex-col gap-1">
+                              {dayRoutes.map((route) => (
+                                <Badge
+                                  key={route.assignment.id}
+                                  variant="outline"
+                                  className={`text-[10px] justify-center cursor-grab ${
+                                    route.assignment.routeType === 'big-box'
+                                      ? 'border-orange-300 bg-orange-50 text-orange-700'
+                                      : route.assignment.routeType === 'out-of-town'
+                                      ? 'border-purple-300 bg-purple-50 text-purple-700'
+                                      : 'border-blue-300 bg-blue-50 text-blue-700'
+                                  }`}
+                                >
+                                  {route.assignment.routeType === 'big-box'
+                                    ? 'BB'
+                                    : route.assignment.routeType === 'out-of-town'
+                                    ? 'OT'
+                                    : 'REG'}
+                                  {route.van && ` ${route.van.name}`}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : isAvailable ? (
+                            <div className="flex justify-center">
+                              <div className="h-2 w-2 rounded-full bg-green-500" title="Available" />
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </DroppableDriverCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+                {(!drivers || drivers.filter((d) => d.status === 'active').length === 0) && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No active drivers
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Drag Overlay */}
+        <DragOverlay>
+          {activeRoute ? (
+            <div
+              className={`p-2 rounded-lg text-xs border shadow-lg ${
+                activeRoute.assignment.routeType === 'big-box'
+                  ? 'bg-orange-50 border-orange-300'
+                  : activeRoute.assignment.routeType === 'out-of-town'
+                  ? 'bg-purple-50 border-purple-300'
+                  : 'bg-blue-50 border-blue-300'
+              }`}
+            >
+              <div className="flex items-center gap-1 mb-1">
+                <GripVertical className="h-3 w-3 text-muted-foreground" />
+                <div
+                  className={`h-2 w-2 rounded-full ${
+                    activeRoute.assignment.routeType === 'big-box'
+                      ? 'bg-orange-500'
+                      : activeRoute.assignment.routeType === 'out-of-town'
+                      ? 'bg-purple-500'
+                      : 'bg-blue-500'
+                  }`}
+                />
+                <span className="font-medium">{activeRoute.driver.name}</span>
+              </div>
+              <div className="text-muted-foreground">
+                {activeRoute.assignment.routeType === 'big-box'
+                  ? 'Big Box'
+                  : activeRoute.assignment.routeType === 'out-of-town'
+                  ? 'Out of Town'
+                  : 'Regular'}
+              </div>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }

@@ -443,6 +443,82 @@ export const appRouter = router({
         await db.deleteRouteAssignment(input.id);
         return { success: true };
       }),
+
+    reassign: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        newDate: z.string().optional(),
+        newDriverId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // Get the current assignment
+        const assignments = await db.getAllRouteAssignments();
+        const currentAssignment = assignments.find(a => a.assignment.id === input.id);
+        
+        if (!currentAssignment) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Route assignment not found' });
+        }
+
+        const targetDate = input.newDate || new Date(currentAssignment.assignment.date).toISOString().split('T')[0];
+        const targetDriverId = input.newDriverId ?? currentAssignment.driver.id;
+
+        // Validate 24-hour notice for the new date
+        const assignmentDate = new Date(targetDate + 'T00:00:00');
+        const now = new Date();
+        const hoursDiff = (assignmentDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursDiff < 24) {
+          throw new TRPCError({ 
+            code: 'BAD_REQUEST', 
+            message: 'Route assignments require at least 24 hours advance notice' 
+          });
+        }
+
+        // Check if driver is available on the new date
+        const availability = await db.getDriverAvailability(targetDriverId, targetDate, targetDate);
+        if (availability.length === 0 || !availability[0].isAvailable) {
+          throw new TRPCError({ 
+            code: 'BAD_REQUEST', 
+            message: 'Driver is not available on this date' 
+          });
+        }
+
+        // Check special route limits if changing driver or date
+        const routeType = currentAssignment.assignment.routeType;
+        if (routeType === 'big-box' || routeType === 'out-of-town') {
+          const { start, end } = getWeekBoundaries(assignmentDate);
+          const existingSpecial = await db.getDriverSpecialRoutesThisWeek(
+            targetDriverId, 
+            routeType, 
+            start, 
+            end
+          );
+          
+          // Filter out the current assignment from the check
+          const otherSpecial = existingSpecial.filter(r => r.id !== input.id);
+          
+          if (otherSpecial.length > 0) {
+            const typeDisplay = routeType === 'big-box' ? 'Big Box' : 'Out of Town';
+            throw new TRPCError({ 
+              code: 'BAD_REQUEST', 
+              message: `Driver already has a ${typeDisplay} route assigned this week` 
+            });
+          }
+        }
+
+        // Update the assignment
+        await db.updateRouteAssignment(input.id, {
+          date: new Date(targetDate + 'T00:00:00'),
+          driverId: targetDriverId,
+        });
+
+        // Notify the driver if they changed
+        if (input.newDriverId && input.newDriverId !== currentAssignment.driver.id) {
+          await notifyRouteAssignment(targetDriverId, routeType, targetDate);
+        }
+
+        return { success: true };
+      }),
   }),
 
   // ============ SCHEDULE VIEW ============
