@@ -13,7 +13,9 @@ import {
   loginAttempts, InsertLoginAttempt, LoginAttempt,
   availabilityReminders, InsertAvailabilityReminder,
   trainingSessions, InsertTrainingSession, TrainingSession,
-  trainingChecklistItems, InsertTrainingChecklistItem, TrainingChecklistItem
+  trainingChecklistItems, InsertTrainingChecklistItem, TrainingChecklistItem,
+  driverAgreements, InsertDriverAgreement, DriverAgreement,
+  agreementReminders, InsertAgreementReminder
 } from "../drizzle/schema";
 import bcrypt from 'bcryptjs';
 import { ENV } from './_core/env';
@@ -1236,4 +1238,177 @@ export async function getConfidenceDistribution() {
   }));
   
   return distribution;
+}
+
+
+// ============ DRIVER AGREEMENT HELPERS ============
+
+/**
+ * Get agreement status for a driver
+ */
+export async function getDriverAgreement(driverId: number): Promise<DriverAgreement | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [agreement] = await db.select()
+    .from(driverAgreements)
+    .where(eq(driverAgreements.driverId, driverId))
+    .limit(1);
+  
+  return agreement || null;
+}
+
+/**
+ * Create a signed agreement record
+ */
+export async function createDriverAgreement(data: {
+  driverId: number;
+  agreementVersion: string;
+  signatureData: string;
+  ipAddress?: string;
+  userAgent?: string;
+}): Promise<DriverAgreement> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const insertData: InsertDriverAgreement = {
+    driverId: data.driverId,
+    agreementVersion: data.agreementVersion,
+    signatureData: data.signatureData,
+    signedAt: new Date(),
+    ipAddress: data.ipAddress,
+    userAgent: data.userAgent,
+  };
+  
+  await db.insert(driverAgreements).values(insertData);
+  
+  const [agreement] = await db.select()
+    .from(driverAgreements)
+    .where(eq(driverAgreements.driverId, data.driverId))
+    .limit(1);
+  
+  return agreement;
+}
+
+/**
+ * Update agreement with PDF URL after generation
+ */
+export async function updateAgreementPdfUrl(driverId: number, pdfUrl: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(driverAgreements)
+    .set({ pdfUrl })
+    .where(eq(driverAgreements.driverId, driverId));
+}
+
+/**
+ * Mark agreement email as sent
+ */
+export async function markAgreementEmailSent(driverId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(driverAgreements)
+    .set({ emailSentAt: new Date() })
+    .where(eq(driverAgreements.driverId, driverId));
+}
+
+/**
+ * Get all drivers with their agreement status
+ */
+export async function getDriversWithAgreementStatus(): Promise<Array<Driver & { hasSigned: boolean; signedAt: Date | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const allDrivers = await db.select().from(drivers).where(eq(drivers.status, 'active'));
+  const allAgreements = await db.select().from(driverAgreements);
+  
+  const agreementMap = new Map(allAgreements.map(a => [a.driverId, a]));
+  
+  return allDrivers.map(driver => ({
+    ...driver,
+    hasSigned: agreementMap.has(driver.id),
+    signedAt: agreementMap.get(driver.id)?.signedAt || null,
+  }));
+}
+
+/**
+ * Get drivers who haven't signed the agreement
+ */
+export async function getDriversWithoutAgreement(): Promise<Driver[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const allDrivers = await db.select().from(drivers).where(eq(drivers.status, 'active'));
+  const signedDriverIds = (await db.select({ driverId: driverAgreements.driverId }).from(driverAgreements))
+    .map(a => a.driverId);
+  
+  return allDrivers.filter(d => !signedDriverIds.includes(d.id));
+}
+
+/**
+ * Record an agreement reminder sent
+ */
+export async function recordAgreementReminder(driverId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.insert(agreementReminders).values({
+    driverId,
+    sentAt: new Date(),
+  });
+}
+
+/**
+ * Get the last reminder sent to a driver
+ */
+export async function getLastAgreementReminder(driverId: number): Promise<Date | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [reminder] = await db.select()
+    .from(agreementReminders)
+    .where(eq(agreementReminders.driverId, driverId))
+    .orderBy(desc(agreementReminders.sentAt))
+    .limit(1);
+  
+  return reminder?.sentAt || null;
+}
+
+/**
+ * Check if a driver needs an agreement reminder (last reminder > 6 hours ago or never sent)
+ */
+export async function needsAgreementReminder(driverId: number): Promise<boolean> {
+  const lastReminder = await getLastAgreementReminder(driverId);
+  
+  if (!lastReminder) return true;
+  
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+  return lastReminder < sixHoursAgo;
+}
+
+/**
+ * Get agreement statistics for admin dashboard
+ */
+export async function getAgreementStats(): Promise<{
+  totalActiveDrivers: number;
+  signedCount: number;
+  unsignedCount: number;
+  signedPercentage: number;
+}> {
+  const db = await getDb();
+  if (!db) return { totalActiveDrivers: 0, signedCount: 0, unsignedCount: 0, signedPercentage: 0 };
+  
+  const activeDrivers = await db.select().from(drivers).where(eq(drivers.status, 'active'));
+  const signedAgreements = await db.select().from(driverAgreements);
+  
+  const totalActiveDrivers = activeDrivers.length;
+  const signedCount = signedAgreements.length;
+  const unsignedCount = totalActiveDrivers - signedCount;
+  const signedPercentage = totalActiveDrivers > 0 
+    ? Math.round((signedCount / totalActiveDrivers) * 100) 
+    : 0;
+  
+  return { totalActiveDrivers, signedCount, unsignedCount, signedPercentage };
 }

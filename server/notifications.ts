@@ -371,3 +371,167 @@ export async function sendAvailabilityReminder(
 
   return sendEmail({ to: email, subject, html });
 }
+
+
+/**
+ * Send signed agreement copy to driver
+ */
+export async function sendSignedAgreementEmail(
+  email: string,
+  name: string,
+  signedAt: Date,
+  pdfUrl?: string
+): Promise<boolean> {
+  if (!email) {
+    console.warn('[Email] No email address provided for signed agreement');
+    return false;
+  }
+
+  const websiteUrl = 'https://driversched.com';
+  const formattedDate = signedAt.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const subject = 'Your Signed Independent Contractor Agreement - Moving Mountains Logistics';
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #f97316;">
+        <h1 style="color: #f97316; margin: 0; font-size: 28px; font-weight: bold;">MML</h1>
+        <p style="color: #666; margin: 5px 0 0 0;">Moving Mountains Logistics</p>
+      </div>
+      
+      <h2 style="color: #1a1a1a; margin-top: 30px;">Agreement Signed Successfully</h2>
+      
+      <p style="color: #333; line-height: 1.6;">
+        Hi ${name},
+      </p>
+      
+      <p style="color: #333; line-height: 1.6;">
+        Thank you for signing the Independent Contractor Driver Services Agreement. 
+        This email confirms that your agreement has been successfully recorded.
+      </p>
+      
+      <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="margin: 0 0 10px 0; color: #166534; font-weight: bold;">
+          ✓ Agreement Details
+        </p>
+        <table style="width: 100%; color: #333;">
+          <tr>
+            <td style="padding: 5px 0;"><strong>Signed By:</strong></td>
+            <td style="padding: 5px 0;">${name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;"><strong>Date & Time:</strong></td>
+            <td style="padding: 5px 0;">${formattedDate}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;"><strong>Agreement Version:</strong></td>
+            <td style="padding: 5px 0;">1.0</td>
+          </tr>
+        </table>
+      </div>
+      
+      ${pdfUrl ? `
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${pdfUrl}" style="display: inline-block; background: #1a1a1a; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Download Signed Agreement (PDF)</a>
+      </div>
+      ` : ''}
+      
+      <p style="color: #333; line-height: 1.6;">
+        You can view your agreement status anytime by logging into the Driver Portal at 
+        <a href="${websiteUrl}" style="color: #ea580c; font-weight: bold;">${websiteUrl}</a>.
+      </p>
+      
+      <p style="color: #333; line-height: 1.6;">
+        If you have any questions about the agreement, please contact your dispatcher.
+      </p>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0 20px 0;">
+      <p style="color: #666; font-size: 12px; text-align: center;">
+        Moving Mountains Logistics<br>
+        Driver Scheduling System
+      </p>
+      <p style="color: #999; font-size: 11px; text-align: center;">
+        This is an automated confirmation email. Please keep this for your records.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({ to: email, subject, html });
+}
+
+/**
+ * Send agreement reminder to driver who hasn't signed
+ */
+export async function sendAgreementReminderEmail(
+  email: string,
+  name: string
+): Promise<boolean> {
+  if (!email) {
+    console.warn('[Email] No email address provided for agreement reminder');
+    return false;
+  }
+
+  const websiteUrl = 'https://driversched.com';
+
+  const subject = 'Action Required: Sign Your Independent Contractor Agreement';
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #f97316;">
+        <h1 style="color: #f97316; margin: 0; font-size: 28px; font-weight: bold;">MML</h1>
+        <p style="color: #666; margin: 5px 0 0 0;">Moving Mountains Logistics</p>
+      </div>
+      
+      <h2 style="color: #1a1a1a; margin-top: 30px;">Reminder: Agreement Signature Required</h2>
+      
+      <p style="color: #333; line-height: 1.6;">
+        Hi ${name},
+      </p>
+      
+      <p style="color: #333; line-height: 1.6;">
+        This is a friendly reminder that you have not yet signed the Independent Contractor Driver Services Agreement. 
+        <strong>This agreement is required to continue driving with Moving Mountains Logistics.</strong>
+      </p>
+      
+      <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px 20px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e;">
+          <strong>⚠️ Action Required</strong><br>
+          Please sign the agreement as soon as possible to avoid any interruption to your route assignments.
+        </p>
+      </div>
+      
+      <p style="color: #333; line-height: 1.6;">To sign the agreement:</p>
+      <ol style="color: #333; line-height: 1.8;">
+        <li>Go to <a href="${websiteUrl}" style="color: #ea580c; font-weight: bold;">${websiteUrl}</a></li>
+        <li>Sign in with your phone number</li>
+        <li>Click on the "Agreement" tab</li>
+        <li>Read through the agreement carefully</li>
+        <li>Draw your signature and click "Sign Agreement"</li>
+      </ol>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${websiteUrl}" style="display: inline-block; background: linear-gradient(to right, #f97316, #dc2626); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Sign Agreement Now</a>
+      </div>
+      
+      <p style="color: #333; line-height: 1.6;">
+        If you have any questions about the agreement, please contact your dispatcher.
+      </p>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0 20px 0;">
+      <p style="color: #666; font-size: 12px; text-align: center;">
+        Moving Mountains Logistics<br>
+        Driver Scheduling System
+      </p>
+      <p style="color: #999; font-size: 11px; text-align: center;">
+        You're receiving this reminder because you haven't signed the required Independent Contractor Agreement.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({ to: email, subject, html });
+}

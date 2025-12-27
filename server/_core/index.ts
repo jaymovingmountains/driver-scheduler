@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { runAvailabilityReminderJob } from "../jobs/availabilityReminder";
+import { runAgreementReminderJob } from "../jobs/agreementReminder";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -63,6 +64,9 @@ async function startServer() {
     
     // Start the availability reminder scheduler (runs every 6 hours)
     startAvailabilityReminderScheduler();
+    
+    // Start the agreement reminder scheduler (runs every 6 hours)
+    startAgreementReminderScheduler();
   });
 }
 
@@ -95,6 +99,36 @@ function startAvailabilityReminderScheduler() {
   }, SIX_HOURS_MS);
   
   console.log('[Scheduler] Availability reminder scheduler started (runs every 6 hours)');
+}
+
+/**
+ * Schedule agreement reminder job to run every 6 hours
+ * This sends reminder emails to drivers who haven't signed the agreement
+ */
+function startAgreementReminderScheduler() {
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+  
+  // Run immediately on startup (after a short delay to let DB connect)
+  setTimeout(async () => {
+    console.log('[Scheduler] Running initial agreement reminder check...');
+    try {
+      await runAgreementReminderJob();
+    } catch (error) {
+      console.error('[Scheduler] Initial agreement reminder job failed:', error);
+    }
+  }, 15000); // 15 second delay on startup (after availability reminders)
+  
+  // Then run every 6 hours
+  setInterval(async () => {
+    console.log('[Scheduler] Running scheduled agreement reminder check...');
+    try {
+      await runAgreementReminderJob();
+    } catch (error) {
+      console.error('[Scheduler] Scheduled agreement reminder job failed:', error);
+    }
+  }, SIX_HOURS_MS);
+  
+  console.log('[Scheduler] Agreement reminder scheduler started (runs every 6 hours)');
 }
 
 startServer().catch(console.error);

@@ -4,7 +4,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
-import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode, sendWeeklyAvailabilitySummary } from "./notifications";
+import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode, sendWeeklyAvailabilitySummary, sendSignedAgreementEmail } from "./notifications";
+import { runAgreementReminderJob } from "./jobs/agreementReminder";
 import { runAvailabilityReminderJob } from "./jobs/availabilityReminder";
 
 // Cookie names
@@ -1145,6 +1146,109 @@ export const appRouter = router({
     confidenceDistribution: adminProcedure
       .query(async () => {
         return db.getConfidenceDistribution();
+      }),
+  }),
+
+  // ============ DRIVER AGREEMENT ============
+  agreement: router({
+    // Get agreement status for current driver
+    getStatus: publicProcedure
+      .query(async ({ ctx }) => {
+        const token = getDriverToken(ctx);
+        if (!token) {
+          return { hasSigned: false, agreement: null };
+        }
+        
+        const driver = await db.getDriverBySessionToken(token);
+        if (!driver) {
+          return { hasSigned: false, agreement: null };
+        }
+        
+        const agreement = await db.getDriverAgreement(driver.id);
+        return {
+          hasSigned: !!agreement,
+          agreement: agreement ? {
+            signedAt: agreement.signedAt,
+            agreementVersion: agreement.agreementVersion,
+          } : null,
+        };
+      }),
+
+    // Sign the agreement
+    sign: publicProcedure
+      .input(z.object({
+        signatureData: z.string().min(100), // Base64 signature image
+        agreementVersion: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const token = getDriverToken(ctx);
+        if (!token) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Login required' });
+        }
+        
+        const driver = await db.getDriverBySessionToken(token);
+        if (!driver) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
+        }
+        
+        // Check if already signed
+        const existing = await db.getDriverAgreement(driver.id);
+        if (existing) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Agreement already signed' });
+        }
+        
+        // Get IP and user agent
+        const ipAddress = (ctx.req.headers['x-forwarded-for'] as string)?.split(',')[0] || 
+                          ctx.req.headers['x-real-ip'] as string || 
+                          'unknown';
+        const userAgent = ctx.req.headers['user-agent'] as string || 'unknown';
+        
+        // Create the agreement record
+        const agreement = await db.createDriverAgreement({
+          driverId: driver.id,
+          agreementVersion: input.agreementVersion,
+          signatureData: input.signatureData,
+          ipAddress,
+          userAgent,
+        });
+        
+        // Send confirmation email with signed copy
+        if (driver.email) {
+          await sendSignedAgreementEmail(
+            driver.email,
+            driver.name,
+            agreement.signedAt
+          );
+          // Mark email as sent
+          await db.markAgreementEmailSent(driver.id);
+        }
+        
+        return { success: true, agreement };
+      }),
+
+    // Admin: Get all drivers with agreement status
+    adminGetAll: adminProcedure
+      .query(async () => {
+        return db.getDriversWithAgreementStatus();
+      }),
+
+    // Admin: Get agreement statistics
+    adminGetStats: adminProcedure
+      .query(async () => {
+        return db.getAgreementStats();
+      }),
+
+    // Admin: Get drivers without signed agreement
+    adminGetUnsigned: adminProcedure
+      .query(async () => {
+        return db.getDriversWithoutAgreement();
+      }),
+
+    // Admin: Manually trigger agreement reminder emails
+    adminSendReminders: adminProcedure
+      .mutation(async () => {
+        const results = await runAgreementReminderJob();
+        return results;
       }),
   }),
 });

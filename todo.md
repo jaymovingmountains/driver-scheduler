@@ -208,3 +208,14 @@
 - [x] Track training completion rates
 - [x] Create admin UI dashboard with charts and metrics
 - [x] Add time-based filtering (last 30 days, 90 days, all time)
+
+## Independent Driver Agreement Feature
+- [x] Research e-signature options (chose in-app solution for cost savings)
+- [x] Store agreement document content for display
+- [x] Create database schema for tracking agreement status per driver
+- [x] Implement HTML5 Canvas signature capture
+- [x] Create admin UI to view who has signed vs not signed
+- [x] Create driver UI to view and sign the agreement
+- [x] Send signed agreement confirmation email to driver
+- [x] Implement 6-hour reminder emails for drivers who haven't signed
+- [x] Test the complete agreement workflow (71 tests passing)

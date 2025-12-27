@@ -63,6 +63,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  FileSignature,
   GraduationCap,
   LayoutDashboard,
   Loader2,
@@ -111,6 +112,7 @@ const menuItems = [
   { icon: Route, label: "Routes", path: "/admin/routes" },
   { icon: CalendarDays, label: "Schedule", path: "/admin/schedule" },
   { icon: GraduationCap, label: "Training", path: "/admin/training" },
+  { icon: FileSignature, label: "Agreements", path: "/admin/agreements" },
   { icon: Bell, label: "Notifications", path: "/admin/notifications" },
   { icon: Shield, label: "Security Logs", path: "/admin/security" },
 ];
@@ -493,6 +495,7 @@ function AdminContent({
           {location === "/admin/schedule" && <SchedulePage />}
           {location === "/admin/training" && <TrainingPage />}
           {location.startsWith("/admin/training/") && <TrainingSessionDetail />}
+          {location === "/admin/agreements" && <AgreementsPage />}
           {location === "/admin/notifications" && <NotificationsPage />}
           {location === "/admin/security" && <SecurityLogsPage />}
         </main>
@@ -3458,6 +3461,221 @@ function TrainingSessionDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+
+// Agreements Page Component
+function AgreementsPage() {
+  const { data: stats, isLoading: statsLoading } = trpc.agreement.adminGetStats.useQuery();
+  const { data: drivers, isLoading: driversLoading } = trpc.agreement.adminGetAll.useQuery();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "signed" | "unsigned">("all");
+
+  const filteredDrivers = useMemo(() => {
+    if (!drivers) return [];
+    
+    return drivers.filter((driver) => {
+      // Filter by search query
+      const matchesSearch = driver.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        driver.phone.includes(searchQuery) ||
+        (driver.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+      
+      // Filter by status
+      const matchesStatus = filterStatus === "all" ||
+        (filterStatus === "signed" && driver.hasSigned) ||
+        (filterStatus === "unsigned" && !driver.hasSigned);
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [drivers, searchQuery, filterStatus]);
+
+  const signedCount = drivers?.filter(d => d.hasSigned).length || 0;
+  const unsignedCount = drivers?.filter(d => !d.hasSigned).length || 0;
+
+  if (statsLoading || driversLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Driver Agreements</h1>
+        <p className="text-muted-foreground">Track Independent Contractor Agreement signatures</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Active Drivers</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.totalActiveDrivers || 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Signed</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{stats?.signedCount || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.signedPercentage || 0}% of drivers
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Unsigned</CardTitle>
+            <XCircle className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{stats?.unsignedCount || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              Pending signatures
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+            <FileSignature className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.signedPercentage || 0}%</div>
+            <div className="mt-2 h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-green-500 transition-all duration-500"
+                style={{ width: `${stats?.signedPercentage || 0}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, phone, or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Drivers</SelectItem>
+            <SelectItem value="signed">Signed</SelectItem>
+            <SelectItem value="unsigned">Unsigned</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Drivers Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Driver</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Signed Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredDrivers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    No drivers found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredDrivers.map((driver) => (
+                  <TableRow key={driver.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+                          <span className="text-sm font-medium text-primary">
+                            {driver.name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium">{driver.name}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone className="h-3 w-3 text-muted-foreground" />
+                          {driver.phone}
+                        </div>
+                        {driver.email && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            {driver.email}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {driver.hasSigned ? (
+                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Signed
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="bg-red-100 text-red-700 hover:bg-red-100">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Unsigned
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {driver.signedAt ? (
+                        <span className="text-sm">
+                          {new Date(driver.signedAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Summary */}
+      <div className="text-sm text-muted-foreground">
+        Showing {filteredDrivers.length} of {drivers?.length || 0} drivers
+        {filterStatus !== "all" && ` (filtered by ${filterStatus})`}
+      </div>
     </div>
   );
 }

@@ -21,12 +21,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
+  AlertTriangle,
   Calendar,
   Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  FileSignature,
   GraduationCap,
   Loader2,
   LogOut,
@@ -38,7 +40,7 @@ import {
   UserCheck,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DRIVER_TOKEN_KEY } from "@/lib/auth-constants";
 
@@ -229,7 +231,10 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
 
 // Driver Dashboard Component
 function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"routes" | "availability" | "training">("routes");
+  const [activeTab, setActiveTab] = useState<"routes" | "availability" | "training" | "agreement">("routes");
+  
+  // Check agreement status
+  const { data: agreementStatus } = trpc.agreement.getStatus.useQuery();
   
   const logoutMutation = trpc.driverAuth.logout.useMutation({
     onSuccess: () => {
@@ -298,6 +303,20 @@ function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => vo
               <GraduationCap className="h-4 w-4 inline mr-2" />
               Training
             </button>
+            <button
+              onClick={() => setActiveTab("agreement")}
+              className={`py-3 px-1 border-b-2 transition-colors relative ${
+                activeTab === "agreement"
+                  ? "border-primary text-primary font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <FileSignature className="h-4 w-4 inline mr-2" />
+              Agreement
+              {!agreementStatus?.hasSigned && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 bg-red-500 rounded-full" />
+              )}
+            </button>
           </nav>
         </div>
       </div>
@@ -307,6 +326,7 @@ function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => vo
         {activeTab === "routes" && <MyRoutes />}
         {activeTab === "availability" && <AvailabilityCalendar />}
         {activeTab === "training" && <MyTraining driverId={driver.id} />}
+        {activeTab === "agreement" && <DriverAgreement driverName={driver.name} />}
       </main>
     </div>
   );
@@ -1210,6 +1230,371 @@ function MyTraining({ driverId }: { driverId: number }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// Driver Agreement Component with Signature Pad
+function DriverAgreement({ driverName }: { driverName: string }) {
+  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  const utils = trpc.useUtils();
+  const { data: status, isLoading } = trpc.agreement.getStatus.useQuery();
+  
+  const signMutation = trpc.agreement.sign.useMutation({
+    onSuccess: () => {
+      toast.success("Agreement signed successfully!", {
+        description: "A copy has been sent to your email.",
+      });
+      utils.agreement.getStatus.invalidate();
+    },
+    onError: (error) => {
+      toast.error("Failed to sign agreement", { description: error.message });
+    },
+  });
+
+  // Handle scroll to track if user has read the agreement
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+    if (isAtBottom && !hasScrolledToBottom) {
+      setHasScrolledToBottom(true);
+    }
+  };
+
+  // Canvas drawing functions
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    setIsDrawing(true);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    
+    if ('touches' in e) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    
+    if ('touches' in e) {
+      e.preventDefault();
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  // Initialize canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Set up canvas for drawing
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }, []);
+
+  const handleSign = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Check if signature is empty
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const hasSignature = imageData.data.some((pixel: number, i: number) => i % 4 === 3 && pixel > 0);
+    
+    if (!hasSignature) {
+      toast.error("Please draw your signature");
+      return;
+    }
+    
+    const signatureData = canvas.toDataURL('image/png');
+    signMutation.mutate({
+      signatureData,
+      agreementVersion: "1.0",
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Already signed
+  if (status?.hasSigned) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+            <CheckCircle2 className="h-8 w-8 text-green-600" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Agreement Signed</h2>
+          <p className="text-muted-foreground mb-4">
+            You signed the Independent Contractor Agreement on{" "}
+            {status.agreement?.signedAt && new Date(status.agreement.signedAt).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            A copy was sent to your email address.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Alert Banner */}
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-amber-800">Action Required</h3>
+              <p className="text-sm text-amber-700">
+                Please review and sign the Independent Contractor Agreement to continue driving with MML.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Agreement Document */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileSignature className="h-5 w-5" />
+            Independent Contractor Driver Services Agreement
+          </CardTitle>
+          <CardDescription>
+            Please read the entire agreement carefully before signing
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Scrollable Agreement Content */}
+          <div
+            ref={containerRef}
+            onScroll={handleScroll}
+            className="h-96 overflow-y-auto border rounded-lg p-4 bg-white text-sm prose prose-sm max-w-none"
+          >
+            <div className="agreement-content">
+              <h1 className="text-center text-lg font-bold mb-4">
+                INDEPENDENT CONTRACTOR DRIVER SERVICES AGREEMENT
+              </h1>
+              
+              <p className="mb-4">
+                This Independent Contractor Driver Services Agreement ("Agreement") is entered into between 
+                Moving Mountains Logistics LLC ("Company") and the undersigned driver ("Contractor").
+              </p>
+
+              <h2 className="font-bold mt-6 mb-2">1. RELATIONSHIP OF PARTIES</h2>
+              <p className="mb-4">
+                The Contractor is an independent contractor and not an employee of the Company. The Contractor 
+                shall be solely responsible for the manner and means of performing delivery services, subject 
+                to the general guidelines and specifications provided by the Company.
+              </p>
+
+              <h2 className="font-bold mt-6 mb-2">2. SERVICES</h2>
+              <p className="mb-4">
+                The Contractor agrees to provide delivery services using Company vehicles. The Contractor shall:
+              </p>
+              <ul className="list-disc pl-6 mb-4">
+                <li>Deliver packages in a timely and professional manner</li>
+                <li>Follow all traffic laws and safety regulations</li>
+                <li>Maintain communication with dispatch as required</li>
+                <li>Handle packages with care to prevent damage</li>
+                <li>Obtain signatures and proof of delivery as required</li>
+              </ul>
+
+              <h2 className="font-bold mt-6 mb-2">3. COMPENSATION</h2>
+              <p className="mb-4">
+                The Contractor shall be compensated according to the rate schedule provided separately. 
+                Payment shall be made on a regular schedule as agreed upon between the parties.
+              </p>
+
+              <h2 className="font-bold mt-6 mb-2">4. VEHICLE AND EQUIPMENT</h2>
+              <p className="mb-4">
+                The Company shall provide vehicles for delivery services. The Contractor agrees to:
+              </p>
+              <ul className="list-disc pl-6 mb-4">
+                <li>Operate vehicles safely and in accordance with all applicable laws</li>
+                <li>Report any vehicle issues or damage immediately</li>
+                <li>Return vehicles in the same condition as received, normal wear excepted</li>
+                <li>Not use vehicles for personal purposes without authorization</li>
+              </ul>
+
+              <h2 className="font-bold mt-6 mb-2">5. INSURANCE AND LIABILITY</h2>
+              <p className="mb-4">
+                The Company maintains commercial auto insurance for vehicles used in delivery operations. 
+                The Contractor acknowledges that they may be personally liable for damages resulting from 
+                negligence or violation of traffic laws.
+              </p>
+
+              <h2 className="font-bold mt-6 mb-2">6. CONFIDENTIALITY</h2>
+              <p className="mb-4">
+                The Contractor agrees to maintain the confidentiality of all customer information, 
+                delivery routes, and Company business information.
+              </p>
+
+              <h2 className="font-bold mt-6 mb-2">7. TERM AND TERMINATION</h2>
+              <p className="mb-4">
+                This Agreement may be terminated by either party at any time with or without cause. 
+                Upon termination, the Contractor shall return all Company property including vehicles, 
+                keys, and equipment.
+              </p>
+
+              <h2 className="font-bold mt-6 mb-2">8. INDEPENDENT CONTRACTOR STATUS</h2>
+              <p className="mb-4">
+                The Contractor acknowledges and agrees that:
+              </p>
+              <ul className="list-disc pl-6 mb-4">
+                <li>They are not entitled to employee benefits</li>
+                <li>They are responsible for their own taxes</li>
+                <li>They have the right to work for other companies</li>
+                <li>They control their own schedule within service requirements</li>
+              </ul>
+
+              <h2 className="font-bold mt-6 mb-2">9. ENTIRE AGREEMENT</h2>
+              <p className="mb-4">
+                This Agreement constitutes the entire agreement between the parties and supersedes all 
+                prior negotiations, representations, or agreements relating to this subject matter.
+              </p>
+
+              <p className="mt-8 text-center text-muted-foreground">
+                [End of Agreement - Please scroll to confirm you have read the entire document]
+              </p>
+            </div>
+          </div>
+
+          {!hasScrolledToBottom && (
+            <p className="text-sm text-muted-foreground text-center">
+              Please scroll to the bottom of the agreement to continue
+            </p>
+          )}
+
+          {/* Signature Section */}
+          {hasScrolledToBottom && (
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="agree-terms"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor="agree-terms" className="text-sm">
+                  I, <strong>{driverName}</strong>, have read and agree to the terms of this Independent Contractor Agreement
+                </label>
+              </div>
+
+              {agreedToTerms && (
+                <div className="space-y-3">
+                  <Label>Draw Your Signature Below</Label>
+                  <div className="border-2 border-dashed rounded-lg p-2 bg-white">
+                    <canvas
+                      ref={canvasRef}
+                      width={400}
+                      height={150}
+                      className="w-full touch-none cursor-crosshair"
+                      style={{ maxWidth: '400px' }}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={clearSignature}>
+                      Clear Signature
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                className="w-full"
+                size="lg"
+                disabled={!agreedToTerms || signMutation.isPending}
+                onClick={handleSign}
+              >
+                {signMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Signing...
+                  </>
+                ) : (
+                  <>
+                    <FileSignature className="h-4 w-4 mr-2" />
+                    Sign Agreement
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

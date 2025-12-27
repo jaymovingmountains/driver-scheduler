@@ -229,3 +229,37 @@ export const trainingChecklistItems = mysqlTable("training_checklist_items", {
 
 export type TrainingChecklistItem = typeof trainingChecklistItems.$inferSelect;
 export type InsertTrainingChecklistItem = typeof trainingChecklistItems.$inferInsert;
+
+
+/**
+ * Driver agreements - tracks signed independent contractor agreements
+ */
+export const driverAgreements = mysqlTable("driver_agreements", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull().unique(), // One agreement per driver
+  agreementVersion: varchar("agreementVersion", { length: 20 }).notNull(),
+  signatureData: text("signatureData").notNull(), // Base64 encoded signature image
+  signedAt: timestamp("signedAt").notNull(),
+  ipAddress: varchar("ipAddress", { length: 45 }), // IPv6 compatible
+  userAgent: text("userAgent"),
+  pdfUrl: text("pdfUrl"), // URL to the signed PDF in S3
+  emailSentAt: timestamp("emailSentAt"), // When the signed copy was emailed
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DriverAgreement = typeof driverAgreements.$inferSelect;
+export type InsertDriverAgreement = typeof driverAgreements.$inferInsert;
+
+/**
+ * Agreement reminders - tracks reminder emails sent to drivers who haven't signed
+ */
+export const agreementReminders = mysqlTable("agreement_reminders", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AgreementReminder = typeof agreementReminders.$inferSelect;
+export type InsertAgreementReminder = typeof agreementReminders.$inferInsert;
