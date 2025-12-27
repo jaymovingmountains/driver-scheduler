@@ -26,12 +26,16 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
+  GraduationCap,
   Loader2,
   LogOut,
   Phone,
   Route,
   Save,
+  Star,
   Truck,
+  UserCheck,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -225,7 +229,7 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
 
 // Driver Dashboard Component
 function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"routes" | "availability">("routes");
+  const [activeTab, setActiveTab] = useState<"routes" | "availability" | "training">("routes");
   
   const logoutMutation = trpc.driverAuth.logout.useMutation({
     onSuccess: () => {
@@ -283,13 +287,26 @@ function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => vo
               <Calendar className="h-4 w-4 inline mr-2" />
               Availability
             </button>
+            <button
+              onClick={() => setActiveTab("training")}
+              className={`py-3 px-1 border-b-2 transition-colors ${
+                activeTab === "training"
+                  ? "border-primary text-primary font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <GraduationCap className="h-4 w-4 inline mr-2" />
+              Training
+            </button>
           </nav>
         </div>
       </div>
 
       {/* Content */}
       <main className="container max-w-4xl mx-auto px-4 py-6">
-        {activeTab === "routes" ? <MyRoutes /> : <AvailabilityCalendar />}
+        {activeTab === "routes" && <MyRoutes />}
+        {activeTab === "availability" && <AvailabilityCalendar />}
+        {activeTab === "training" && <MyTraining driverId={driver.id} />}
       </main>
     </div>
   );
@@ -741,6 +758,458 @@ function AvailabilityCalendar() {
             : "Click on days to mark yourself available or unavailable, then save."}
         </p>
       </div>
+    </div>
+  );
+}
+
+
+// Training category labels for display
+const TRAINING_CATEGORY_LABELS: Record<string, { label: string; description: string }> = {
+  'mml-yard': { label: 'MML Yard Procedures', description: 'Keys, van features, and yard operations' },
+  'warehouse': { label: 'Warehouse Procedures', description: 'Check-in, scanning, sorting, and check-out' },
+  'on-road-delivery': { label: 'On-Road: Basic Delivery', description: 'Navigation, delivery basics, and customer interaction' },
+  'on-road-apartments': { label: 'On-Road: Apartments', description: 'Apartment complex deliveries' },
+  'on-road-businesses': { label: 'On-Road: Businesses', description: 'Business and commercial deliveries' },
+  'on-road-first-attempts': { label: 'On-Road: First Attempts', description: 'Handling delivery attempts and re-deliveries' },
+  'on-road-pickups': { label: 'On-Road: Pickups', description: 'Package pickup procedures' },
+};
+
+// Improvement area options
+const IMPROVEMENT_AREAS = [
+  'Time management',
+  'Navigation skills',
+  'Customer communication',
+  'Package handling',
+  'Vehicle operation',
+  'Safety awareness',
+  'Scanning accuracy',
+  'Route efficiency',
+  'Problem solving',
+  'Following procedures',
+];
+
+// My Training Component
+function MyTraining({ driverId }: { driverId: number }) {
+  const [selectedSession, setSelectedSession] = useState<number | null>(null);
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [confidenceRating, setConfidenceRating] = useState(5);
+  const [selectedImprovements, setSelectedImprovements] = useState<string[]>([]);
+  const [trainerNotes, setTrainerNotes] = useState('');
+
+  const { data: sessions, isLoading, refetch } = trpc.training.mySessions.useQuery({});
+  
+  const { data: sessionDetail, refetch: refetchDetail } = trpc.training.get.useQuery(
+    { sessionId: selectedSession! },
+    { enabled: selectedSession !== null }
+  );
+  
+  const { data: progress } = trpc.training.getProgress.useQuery(
+    { sessionId: selectedSession! },
+    { enabled: selectedSession !== null }
+  );
+
+  const updateChecklistMutation = trpc.training.updateChecklistItem.useMutation({
+    onSuccess: () => {
+      refetchDetail();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update: ${error.message}`);
+    },
+  });
+
+  const completeMutation = trpc.training.complete.useMutation({
+    onSuccess: () => {
+      toast.success('Training session completed!');
+      setShowCompleteDialog(false);
+      refetch();
+      refetchDetail();
+    },
+    onError: (error) => {
+      toast.error(`Failed to complete: ${error.message}`);
+    },
+  });
+
+  const handleToggleItem = (itemId: number, currentState: boolean) => {
+    updateChecklistMutation.mutate({
+      itemId,
+      isCompleted: !currentState,
+    });
+  };
+
+  const handleComplete = () => {
+    if (!selectedSession) return;
+    completeMutation.mutate({
+      sessionId: selectedSession,
+      confidenceRating,
+      improvementAreas: selectedImprovements,
+      trainerNotes: trainerNotes || undefined,
+    });
+  };
+
+  const toggleImprovement = (area: string) => {
+    setSelectedImprovements(prev => 
+      prev.includes(area) 
+        ? prev.filter(a => a !== area)
+        : [...prev, area]
+    );
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'scheduled':
+        return <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Scheduled</span>;
+      case 'in-progress':
+        return <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">In Progress</span>;
+      case 'completed':
+        return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">Completed</span>;
+      case 'cancelled':
+        return <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">Cancelled</span>;
+      default:
+        return <span className="px-2 py-1 text-xs rounded-full bg-gray-100">{status}</span>;
+    }
+  };
+
+  // If viewing a specific session
+  if (selectedSession && sessionDetail) {
+    const isTrainer = sessionDetail.trainerId === driverId;
+    const canEdit = sessionDetail.status === 'in-progress' && isTrainer;
+    const canComplete = sessionDetail.status === 'in-progress' && isTrainer;
+
+    // Group checklist items by category
+    const groupedItems: Record<string, typeof sessionDetail.checklistItems> = {};
+    sessionDetail.checklistItems?.forEach((item: any) => {
+      if (!groupedItems[item.category]) {
+        groupedItems[item.category] = [];
+      }
+      groupedItems[item.category].push(item);
+    });
+
+    return (
+      <div className="space-y-4">
+        {/* Back Button */}
+        <Button variant="ghost" size="sm" onClick={() => setSelectedSession(null)} className="gap-2">
+          <ChevronLeft className="h-4 w-4" />
+          Back to Sessions
+        </Button>
+
+        {/* Session Header */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Training Session</CardTitle>
+                <CardDescription>
+                  {new Date(sessionDetail.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                </CardDescription>
+              </div>
+              {getStatusBadge(sessionDetail.status)}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <UserCheck className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Trainer</p>
+                  <p className="font-medium">{sessionDetail.trainer?.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <GraduationCap className="h-5 w-5 text-blue-600" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Trainee</p>
+                  <p className="font-medium">{sessionDetail.trainee?.name}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span>Progress</span>
+                <span className="font-medium">{progress?.completed || 0} / {progress?.total || 0}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-orange-500 h-2 rounded-full transition-all"
+                  style={{ width: `${progress?.percentage || 0}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Complete Button for Trainer */}
+            {canComplete && (
+              <Button onClick={() => setShowCompleteDialog(true)} className="w-full">
+                Complete Training Session
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Completed Session Info */}
+        {sessionDetail.status === 'completed' && (
+          <Card className="border-green-200 bg-green-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2 text-green-700">
+                <CheckCircle2 className="h-5 w-5" />
+                Training Completed
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-xs text-green-700 mb-1">Confidence Rating</p>
+                <div className="flex items-center gap-1">
+                  {[...Array(10)].map((_, i) => (
+                    <Star 
+                      key={i} 
+                      className={`h-4 w-4 ${i < (sessionDetail.confidenceRating || 0) ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
+                    />
+                  ))}
+                  <span className="font-bold ml-2">{sessionDetail.confidenceRating}/10</span>
+                </div>
+              </div>
+              {sessionDetail.improvementAreas && (
+                <div>
+                  <p className="text-xs text-green-700 mb-1">Areas for Improvement</p>
+                  <div className="flex flex-wrap gap-1">
+                    {JSON.parse(sessionDetail.improvementAreas).map((area: string) => (
+                      <span key={area} className="px-2 py-0.5 text-xs rounded bg-white border">
+                        {area}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sessionDetail.trainerNotes && (
+                <div>
+                  <p className="text-xs text-green-700 mb-1">Trainer Notes</p>
+                  <p className="text-sm bg-white p-2 rounded border">{sessionDetail.trainerNotes}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Checklist Categories */}
+        <div className="space-y-3">
+          {Object.entries(groupedItems).map(([category, items]) => (
+            <Card key={category}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-orange-500" />
+                  {TRAINING_CATEGORY_LABELS[category]?.label || category}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  {TRAINING_CATEGORY_LABELS[category]?.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-1">
+                  {items.map((item: any) => (
+                    <div 
+                      key={item.id} 
+                      className={`flex items-center gap-2 p-2 rounded text-sm ${
+                        canEdit ? 'cursor-pointer hover:bg-muted/50' : ''
+                      } ${item.isCompleted ? 'bg-green-50' : ''}`}
+                      onClick={() => canEdit && handleToggleItem(item.id, item.isCompleted)}
+                    >
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        item.isCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300'
+                      }`}>
+                        {item.isCompleted && <Check className="h-2.5 w-2.5 text-white" />}
+                      </div>
+                      <span className={item.isCompleted ? 'line-through text-muted-foreground' : ''}>
+                        {item.itemLabel}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Complete Training Dialog */}
+        <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Complete Training</DialogTitle>
+              <DialogDescription>
+                Rate the trainee's confidence and note areas for improvement
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Confidence Rating (1-10)</Label>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {[...Array(10)].map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setConfidenceRating(i + 1)}
+                      className="p-0.5"
+                    >
+                      <Star 
+                        className={`h-6 w-6 ${i < confidenceRating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
+                      />
+                    </button>
+                  ))}
+                  <span className="ml-2 font-bold">{confidenceRating}/10</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Areas for Improvement</Label>
+                <div className="grid grid-cols-2 gap-1">
+                  {IMPROVEMENT_AREAS.map((area) => (
+                    <div
+                      key={area}
+                      onClick={() => toggleImprovement(area)}
+                      className={`p-2 rounded border cursor-pointer text-xs ${
+                        selectedImprovements.includes(area)
+                          ? 'bg-orange-100 border-orange-300 text-orange-800'
+                          : 'hover:bg-muted'
+                      }`}
+                    >
+                      {area}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                  placeholder="Additional notes..."
+                  value={trainerNotes}
+                  onChange={(e) => setTrainerNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleComplete} disabled={completeMutation.isPending}>
+                {completeMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Completing...
+                  </>
+                ) : (
+                  'Complete'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  // Sessions List
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!sessions?.length) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <GraduationCap className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="font-semibold mb-2">No Training Sessions</h3>
+          <p className="text-sm text-muted-foreground">
+            You don't have any training sessions assigned yet.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Separate sessions by role
+  const asTrainer = sessions.filter((s: any) => s.trainerId === driverId);
+  const asTrainee = sessions.filter((s: any) => s.traineeId === driverId);
+
+  return (
+    <div className="space-y-6">
+      {/* As Trainer */}
+      {asTrainer.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-semibold flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-green-600" />
+            Training Others ({asTrainer.length})
+          </h3>
+          {asTrainer.map((session: any) => (
+            <Card 
+              key={session.id} 
+              className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setSelectedSession(session.id)}
+            >
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{session.trainee?.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {session.confidenceRating && (
+                      <div className="flex items-center gap-1 text-sm">
+                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        {session.confidenceRating}/10
+                      </div>
+                    )}
+                    {getStatusBadge(session.status)}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* As Trainee */}
+      {asTrainee.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-semibold flex items-center gap-2">
+            <GraduationCap className="h-5 w-5 text-blue-600" />
+            My Training ({asTrainee.length})
+          </h3>
+          {asTrainee.map((session: any) => (
+            <Card 
+              key={session.id} 
+              className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setSelectedSession(session.id)}
+            >
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">With {session.trainer?.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {session.confidenceRating && (
+                      <div className="flex items-center gap-1 text-sm">
+                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        {session.confidenceRating}/10
+                      </div>
+                    )}
+                    {getStatusBadge(session.status)}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

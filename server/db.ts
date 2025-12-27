@@ -11,7 +11,9 @@ import {
   adminCredentials, InsertAdminCredential,
   adminSessions, InsertAdminSession,
   loginAttempts, InsertLoginAttempt, LoginAttempt,
-  availabilityReminders, InsertAvailabilityReminder
+  availabilityReminders, InsertAvailabilityReminder,
+  trainingSessions, InsertTrainingSession, TrainingSession,
+  trainingChecklistItems, InsertTrainingChecklistItem, TrainingChecklistItem
 } from "../drizzle/schema";
 import bcrypt from 'bcryptjs';
 import { ENV } from './_core/env';
@@ -775,4 +777,304 @@ export function getUpcomingDatesNeedingAvailability(): string[] {
   }
   
   return dates;
+}
+
+
+// ============ TRAINING HELPERS ============
+
+// Default checklist items for each category
+export const TRAINING_CHECKLIST_TEMPLATE = {
+  'mml-yard': [
+    { key: 'key-location', label: 'Where to get the keys' },
+    { key: 'van-exterior', label: 'Van exterior walk-around inspection' },
+    { key: 'van-interior', label: 'Van interior features and controls' },
+    { key: 'van-safety', label: 'Safety equipment location (fire extinguisher, first aid)' },
+    { key: 'van-fuel', label: 'Fuel card and fueling procedures' },
+    { key: 'van-parking', label: 'Proper parking and key return procedures' },
+  ],
+  'warehouse': [
+    { key: 'check-in', label: 'Check-in procedures at warehouse' },
+    { key: 'scanning', label: 'Package scanning process' },
+    { key: 'sorting', label: 'Sorting packages for route efficiency' },
+    { key: 'missing-check', label: 'Checking for missing packages' },
+    { key: 'load-van', label: 'Proper van loading techniques' },
+    { key: 'check-out', label: 'Check-out procedures' },
+  ],
+  'on-road-delivery': [
+    { key: 'navigation', label: 'Using navigation and delivery app' },
+    { key: 'delivery-basics', label: 'Basic delivery procedures' },
+    { key: 'photo-proof', label: 'Taking delivery photos' },
+    { key: 'safe-location', label: 'Finding safe delivery locations' },
+    { key: 'customer-interaction', label: 'Customer interaction and communication' },
+  ],
+  'on-road-apartments': [
+    { key: 'apt-access', label: 'Apartment complex access (gates, codes)' },
+    { key: 'apt-lockers', label: 'Using package lockers' },
+    { key: 'apt-leasing', label: 'Delivering to leasing offices' },
+    { key: 'apt-navigation', label: 'Navigating apartment buildings' },
+  ],
+  'on-road-businesses': [
+    { key: 'business-hours', label: 'Business delivery hours awareness' },
+    { key: 'business-reception', label: 'Delivering to reception/mail rooms' },
+    { key: 'business-signature', label: 'Obtaining signatures when required' },
+    { key: 'business-loading', label: 'Using loading docks when available' },
+  ],
+  'on-road-first-attempts': [
+    { key: 'first-attempt-note', label: 'Leaving delivery attempt notices' },
+    { key: 'first-attempt-neighbor', label: 'Neighbor delivery options' },
+    { key: 'first-attempt-safe', label: 'Finding alternate safe locations' },
+    { key: 'first-attempt-reattempt', label: 'Scheduling re-delivery attempts' },
+  ],
+  'on-road-pickups': [
+    { key: 'pickup-schedule', label: 'Understanding pickup schedules' },
+    { key: 'pickup-scan', label: 'Scanning pickup packages' },
+    { key: 'pickup-verify', label: 'Verifying pickup package counts' },
+    { key: 'pickup-secure', label: 'Securing pickup packages in van' },
+  ],
+};
+
+export type TrainingCategory = keyof typeof TRAINING_CHECKLIST_TEMPLATE;
+
+/**
+ * Create a new training session with all checklist items
+ */
+export async function createTrainingSession(trainerId: number, traineeId: number, date: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Create the session
+  const result = await db.insert(trainingSessions).values({
+    trainerId,
+    traineeId,
+    date: new Date(date + 'T00:00:00'),
+    status: 'scheduled',
+  });
+  
+  const sessionId = result[0].insertId;
+  
+  // Create all checklist items
+  const checklistItems: InsertTrainingChecklistItem[] = [];
+  for (const [category, items] of Object.entries(TRAINING_CHECKLIST_TEMPLATE)) {
+    for (const item of items) {
+      checklistItems.push({
+        sessionId,
+        category: category as TrainingCategory,
+        itemKey: item.key,
+        itemLabel: item.label,
+        isCompleted: false,
+      });
+    }
+  }
+  
+  await db.insert(trainingChecklistItems).values(checklistItems);
+  
+  return sessionId;
+}
+
+/**
+ * Get a training session by ID with all checklist items
+ */
+export async function getTrainingSession(sessionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const sessions = await db.select()
+    .from(trainingSessions)
+    .where(eq(trainingSessions.id, sessionId))
+    .limit(1);
+  
+  if (sessions.length === 0) return null;
+  
+  const session = sessions[0];
+  
+  // Get trainer and trainee info
+  const [trainer] = await db.select().from(drivers).where(eq(drivers.id, session.trainerId)).limit(1);
+  const [trainee] = await db.select().from(drivers).where(eq(drivers.id, session.traineeId)).limit(1);
+  
+  // Get checklist items
+  const checklistItems = await db.select()
+    .from(trainingChecklistItems)
+    .where(eq(trainingChecklistItems.sessionId, sessionId));
+  
+  return {
+    ...session,
+    trainer,
+    trainee,
+    checklistItems,
+  };
+}
+
+/**
+ * Get all training sessions with optional filters
+ */
+export async function getTrainingSessions(options?: {
+  trainerId?: number;
+  traineeId?: number;
+  status?: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [];
+  
+  if (options?.trainerId) {
+    conditions.push(eq(trainingSessions.trainerId, options.trainerId));
+  }
+  if (options?.traineeId) {
+    conditions.push(eq(trainingSessions.traineeId, options.traineeId));
+  }
+  if (options?.status) {
+    conditions.push(eq(trainingSessions.status, options.status));
+  }
+  
+  const sessions = await db.select()
+    .from(trainingSessions)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(trainingSessions.date))
+    .limit(options?.limit || 100);
+  
+  // Get all unique driver IDs
+  const driverIds = new Set<number>();
+  sessions.forEach(s => {
+    driverIds.add(s.trainerId);
+    driverIds.add(s.traineeId);
+  });
+  
+  // Fetch all drivers at once
+  const allDrivers = await db.select().from(drivers);
+  const driverMap = new Map(allDrivers.map(d => [d.id, d]));
+  
+  // Enrich sessions with driver info
+  return sessions.map(session => ({
+    ...session,
+    trainer: driverMap.get(session.trainerId),
+    trainee: driverMap.get(session.traineeId),
+  }));
+}
+
+/**
+ * Update a training session status
+ */
+export async function updateTrainingSessionStatus(
+  sessionId: number, 
+  status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled'
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const updates: Partial<TrainingSession> = { status };
+  if (status === 'completed') {
+    updates.completedAt = new Date();
+  }
+  
+  await db.update(trainingSessions)
+    .set(updates)
+    .where(eq(trainingSessions.id, sessionId));
+}
+
+/**
+ * Complete a training session with rating and notes
+ */
+export async function completeTrainingSession(
+  sessionId: number,
+  confidenceRating: number,
+  improvementAreas: string[],
+  trainerNotes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(trainingSessions)
+    .set({
+      status: 'completed',
+      confidenceRating,
+      improvementAreas: JSON.stringify(improvementAreas),
+      trainerNotes: trainerNotes || null,
+      completedAt: new Date(),
+    })
+    .where(eq(trainingSessions.id, sessionId));
+}
+
+/**
+ * Update a checklist item
+ */
+export async function updateChecklistItem(
+  itemId: number,
+  isCompleted: boolean,
+  notes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(trainingChecklistItems)
+    .set({
+      isCompleted,
+      completedAt: isCompleted ? new Date() : null,
+      notes: notes || null,
+    })
+    .where(eq(trainingChecklistItems.id, itemId));
+}
+
+/**
+ * Get training history for a specific driver (as trainee)
+ */
+export async function getDriverTrainingHistory(driverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const sessions = await db.select()
+    .from(trainingSessions)
+    .where(eq(trainingSessions.traineeId, driverId))
+    .orderBy(desc(trainingSessions.date));
+  
+  // Get trainer info for each session
+  const allDrivers = await db.select().from(drivers);
+  const driverMap = new Map(allDrivers.map(d => [d.id, d]));
+  
+  return sessions.map(session => ({
+    ...session,
+    trainer: driverMap.get(session.trainerId),
+  }));
+}
+
+/**
+ * Get checklist items for a session grouped by category
+ */
+export async function getChecklistItemsByCategory(sessionId: number) {
+  const db = await getDb();
+  if (!db) return {};
+  
+  const items = await db.select()
+    .from(trainingChecklistItems)
+    .where(eq(trainingChecklistItems.sessionId, sessionId));
+  
+  // Group by category
+  const grouped: Record<string, TrainingChecklistItem[]> = {};
+  for (const item of items) {
+    if (!grouped[item.category]) {
+      grouped[item.category] = [];
+    }
+    grouped[item.category].push(item);
+  }
+  
+  return grouped;
+}
+
+/**
+ * Get training progress stats for a session
+ */
+export async function getTrainingProgress(sessionId: number) {
+  const db = await getDb();
+  if (!db) return { total: 0, completed: 0, percentage: 0 };
+  
+  const items = await db.select()
+    .from(trainingChecklistItems)
+    .where(eq(trainingChecklistItems.sessionId, sessionId));
+  
+  const total = items.length;
+  const completed = items.filter(i => i.isCompleted).length;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  
+  return { total, completed, percentage };
 }

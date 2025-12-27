@@ -59,9 +59,11 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   Copy,
   Eye,
   EyeOff,
+  GraduationCap,
   LayoutDashboard,
   Loader2,
   LogOut,
@@ -78,6 +80,7 @@ import {
   Send,
   Shield,
   GripVertical,
+  Star,
   Trash2,
   Truck,
   UserCheck,
@@ -107,6 +110,7 @@ const menuItems = [
   { icon: Users, label: "Drivers", path: "/admin/drivers" },
   { icon: Route, label: "Routes", path: "/admin/routes" },
   { icon: CalendarDays, label: "Schedule", path: "/admin/schedule" },
+  { icon: GraduationCap, label: "Training", path: "/admin/training" },
   { icon: Bell, label: "Notifications", path: "/admin/notifications" },
   { icon: Shield, label: "Security Logs", path: "/admin/security" },
 ];
@@ -487,6 +491,8 @@ function AdminContent({
           {location === "/admin/drivers" && <DriversPage />}
           {location === "/admin/routes" && <RoutesPage />}
           {location === "/admin/schedule" && <SchedulePage />}
+          {location === "/admin/training" && <TrainingPage />}
+          {location.startsWith("/admin/training/") && <TrainingSessionDetail />}
           {location === "/admin/notifications" && <NotificationsPage />}
           {location === "/admin/security" && <SecurityLogsPage />}
         </main>
@@ -2570,6 +2576,624 @@ function SecurityLogsPage() {
           </TableBody>
         </Table>
       </Card>
+    </div>
+  );
+}
+
+
+// Training category labels for display
+const TRAINING_CATEGORY_LABELS: Record<string, { label: string; description: string }> = {
+  'mml-yard': { label: 'MML Yard Procedures', description: 'Keys, van features, and yard operations' },
+  'warehouse': { label: 'Warehouse Procedures', description: 'Check-in, scanning, sorting, and check-out' },
+  'on-road-delivery': { label: 'On-Road: Basic Delivery', description: 'Navigation, delivery basics, and customer interaction' },
+  'on-road-apartments': { label: 'On-Road: Apartments', description: 'Apartment complex deliveries' },
+  'on-road-businesses': { label: 'On-Road: Businesses', description: 'Business and commercial deliveries' },
+  'on-road-first-attempts': { label: 'On-Road: First Attempts', description: 'Handling delivery attempts and re-deliveries' },
+  'on-road-pickups': { label: 'On-Road: Pickups', description: 'Package pickup procedures' },
+};
+
+// Improvement area options
+const IMPROVEMENT_AREAS = [
+  'Time management',
+  'Navigation skills',
+  'Customer communication',
+  'Package handling',
+  'Vehicle operation',
+  'Safety awareness',
+  'Scanning accuracy',
+  'Route efficiency',
+  'Problem solving',
+  'Following procedures',
+];
+
+// Training Page Component
+function TrainingPage() {
+  const [, navigate] = useLocation();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedTrainer, setSelectedTrainer] = useState<string>('');
+  const [selectedTrainee, setSelectedTrainee] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  const { data: sessions, isLoading, refetch } = trpc.training.list.useQuery({
+    status: statusFilter !== 'all' ? statusFilter as any : undefined,
+  });
+  const { data: drivers } = trpc.drivers.list.useQuery();
+
+  const createSessionMutation = trpc.training.create.useMutation({
+    onSuccess: (data) => {
+      toast.success('Training session created');
+      setShowCreateDialog(false);
+      setSelectedTrainer('');
+      setSelectedTrainee('');
+      refetch();
+      navigate(`/admin/training/${data.sessionId}`);
+    },
+    onError: (error) => {
+      toast.error(`Failed to create session: ${error.message}`);
+    },
+  });
+
+  const activeDrivers = drivers?.filter(d => d.status === 'active') || [];
+
+  const handleCreate = () => {
+    if (!selectedTrainer || !selectedTrainee || !selectedDate) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    if (selectedTrainer === selectedTrainee) {
+      toast.error('Trainer and trainee must be different');
+      return;
+    }
+    createSessionMutation.mutate({
+      trainerId: parseInt(selectedTrainer),
+      traineeId: parseInt(selectedTrainee),
+      date: selectedDate,
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'scheduled':
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Scheduled</Badge>;
+      case 'in-progress':
+        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">In Progress</Badge>;
+      case 'completed':
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Completed</Badge>;
+      case 'cancelled':
+        return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Cancelled</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Training Sessions</h1>
+          <p className="text-muted-foreground">Manage driver training for new hires</p>
+        </div>
+        <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+          <Plus className="h-4 w-4" />
+          New Training Session
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Sessions</CardDescription>
+            <CardTitle className="text-3xl">{sessions?.length || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Scheduled</CardDescription>
+            <CardTitle className="text-3xl text-blue-600">
+              {sessions?.filter(s => s.status === 'scheduled').length || 0}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>In Progress</CardDescription>
+            <CardTitle className="text-3xl text-yellow-600">
+              {sessions?.filter(s => s.status === 'in-progress').length || 0}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Completed</CardDescription>
+            <CardTitle className="text-3xl text-green-600">
+              {sessions?.filter(s => s.status === 'completed').length || 0}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {/* Filter */}
+      <div className="flex gap-4">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sessions</SelectItem>
+            <SelectItem value="scheduled">Scheduled</SelectItem>
+            <SelectItem value="in-progress">In Progress</SelectItem>
+            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Sessions Table */}
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Trainer</TableHead>
+              <TableHead>Trainee</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Confidence</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                </TableCell>
+              </TableRow>
+            ) : !sessions?.length ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  No training sessions yet. Create one to get started.
+                </TableCell>
+              </TableRow>
+            ) : (
+              sessions.map((session: any) => (
+                <TableRow key={session.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/admin/training/${session.id}`)}>
+                  <TableCell>
+                    {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </TableCell>
+                  <TableCell className="font-medium">{session.trainer?.name || 'Unknown'}</TableCell>
+                  <TableCell>{session.trainee?.name || 'Unknown'}</TableCell>
+                  <TableCell>{getStatusBadge(session.status)}</TableCell>
+                  <TableCell>
+                    {session.confidenceRating ? (
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        <span className="font-medium">{session.confidenceRating}/10</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/admin/training/${session.id}`); }}>
+                      View
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {/* Create Session Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Training Session</DialogTitle>
+            <DialogDescription>
+              Assign an experienced driver to train a new hire
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Training Date</Label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Trainer (Experienced Driver)</Label>
+              <Select value={selectedTrainer} onValueChange={setSelectedTrainer}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select trainer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeDrivers.map((driver) => (
+                    <SelectItem key={driver.id} value={driver.id.toString()}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Trainee (New Hire)</Label>
+              <Select value={selectedTrainee} onValueChange={setSelectedTrainee}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select trainee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeDrivers.map((driver) => (
+                    <SelectItem key={driver.id} value={driver.id.toString()}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={createSessionMutation.isPending}>
+              {createSessionMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Creating...
+                </>
+              ) : (
+                'Create Session'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Training Session Detail Component
+function TrainingSessionDetail() {
+  const [location, navigate] = useLocation();
+  const sessionId = parseInt(location.split('/').pop() || '0');
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [confidenceRating, setConfidenceRating] = useState(5);
+  const [selectedImprovements, setSelectedImprovements] = useState<string[]>([]);
+  const [trainerNotes, setTrainerNotes] = useState('');
+
+  const { data: session, isLoading, refetch } = trpc.training.get.useQuery(
+    { sessionId },
+    { enabled: sessionId > 0 }
+  );
+  const { data: progress } = trpc.training.getProgress.useQuery(
+    { sessionId },
+    { enabled: sessionId > 0 }
+  );
+
+  const updateStatusMutation = trpc.training.updateStatus.useMutation({
+    onSuccess: () => {
+      toast.success('Status updated');
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update status: ${error.message}`);
+    },
+  });
+
+  const updateChecklistMutation = trpc.training.updateChecklistItem.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update: ${error.message}`);
+    },
+  });
+
+  const completeMutation = trpc.training.complete.useMutation({
+    onSuccess: () => {
+      toast.success('Training session completed');
+      setShowCompleteDialog(false);
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to complete: ${error.message}`);
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Training session not found</p>
+        <Button variant="link" onClick={() => navigate('/admin/training')}>
+          Back to Training
+        </Button>
+      </div>
+    );
+  }
+
+  // Group checklist items by category
+  const groupedItems: Record<string, typeof session.checklistItems> = {};
+  session.checklistItems?.forEach((item: any) => {
+    if (!groupedItems[item.category]) {
+      groupedItems[item.category] = [];
+    }
+    groupedItems[item.category].push(item);
+  });
+
+  const handleToggleItem = (itemId: number, currentState: boolean) => {
+    updateChecklistMutation.mutate({
+      itemId,
+      isCompleted: !currentState,
+    });
+  };
+
+  const handleComplete = () => {
+    completeMutation.mutate({
+      sessionId,
+      confidenceRating,
+      improvementAreas: selectedImprovements,
+      trainerNotes: trainerNotes || undefined,
+    });
+  };
+
+  const toggleImprovement = (area: string) => {
+    setSelectedImprovements(prev => 
+      prev.includes(area) 
+        ? prev.filter(a => a !== area)
+        : [...prev, area]
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/admin/training')}>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold tracking-tight">Training Session</h1>
+          <p className="text-muted-foreground">
+            {new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+        </div>
+        {session.status !== 'completed' && session.status !== 'cancelled' && (
+          <div className="flex gap-2">
+            {session.status === 'scheduled' && (
+              <Button 
+                variant="outline"
+                onClick={() => updateStatusMutation.mutate({ sessionId, status: 'in-progress' })}
+                disabled={updateStatusMutation.isPending}
+              >
+                Start Training
+              </Button>
+            )}
+            {session.status === 'in-progress' && (
+              <Button onClick={() => setShowCompleteDialog(true)}>
+                Complete Training
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Session Info */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Trainer</CardDescription>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-green-600" />
+              {session.trainer?.name || 'Unknown'}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Trainee</CardDescription>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <GraduationCap className="h-5 w-5 text-blue-600" />
+              {session.trainee?.name || 'Unknown'}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Progress</CardDescription>
+            <CardTitle className="text-lg">
+              {progress?.completed || 0} / {progress?.total || 0} ({progress?.percentage || 0}%)
+            </CardTitle>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+              <div 
+                className="bg-orange-500 h-2 rounded-full transition-all"
+                style={{ width: `${progress?.percentage || 0}%` }}
+              />
+            </div>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {/* Completed Session Info */}
+      {session.status === 'completed' && (
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="h-5 w-5" />
+              Training Completed
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label className="text-green-700">Confidence Rating</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  {[...Array(10)].map((_, i) => (
+                    <Star 
+                      key={i} 
+                      className={`h-5 w-5 ${i < (session.confidenceRating || 0) ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
+                    />
+                  ))}
+                  <span className="font-bold text-lg ml-2">{session.confidenceRating}/10</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-green-700">Completed At</Label>
+                <p className="mt-1">
+                  {session.completedAt ? new Date(session.completedAt).toLocaleString() : '-'}
+                </p>
+              </div>
+            </div>
+            {session.improvementAreas && (
+              <div>
+                <Label className="text-green-700">Areas for Improvement</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {JSON.parse(session.improvementAreas).map((area: string) => (
+                    <Badge key={area} variant="outline" className="bg-white">
+                      {area}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {session.trainerNotes && (
+              <div>
+                <Label className="text-green-700">Trainer Notes</Label>
+                <p className="mt-1 text-sm bg-white p-3 rounded border">{session.trainerNotes}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Checklist Categories */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Training Checklist</h2>
+        {Object.entries(groupedItems).map(([category, items]) => (
+          <Card key={category}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-orange-500" />
+                {TRAINING_CATEGORY_LABELS[category]?.label || category}
+              </CardTitle>
+              <CardDescription>
+                {TRAINING_CATEGORY_LABELS[category]?.description}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {items.map((item: any) => (
+                  <div 
+                    key={item.id} 
+                    className={`flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer ${item.isCompleted ? 'bg-green-50' : ''}`}
+                    onClick={() => session.status !== 'completed' && session.status !== 'cancelled' && handleToggleItem(item.id, item.isCompleted)}
+                  >
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${item.isCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>
+                      {item.isCompleted && <Check className="h-3 w-3 text-white" />}
+                    </div>
+                    <span className={item.isCompleted ? 'line-through text-muted-foreground' : ''}>
+                      {item.itemLabel}
+                    </span>
+                    {item.completedAt && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        {new Date(item.completedAt).toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Complete Training Dialog */}
+      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Complete Training Session</DialogTitle>
+            <DialogDescription>
+              Rate the trainee's confidence and note any areas for improvement
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-3">
+              <Label>Confidence Rating (1-10)</Label>
+              <div className="flex items-center gap-1">
+                {[...Array(10)].map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setConfidenceRating(i + 1)}
+                    className="p-1 hover:scale-110 transition-transform"
+                  >
+                    <Star 
+                      className={`h-6 w-6 ${i < confidenceRating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
+                    />
+                  </button>
+                ))}
+                <span className="ml-3 font-bold text-lg">{confidenceRating}/10</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Areas for Improvement (select all that apply)</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {IMPROVEMENT_AREAS.map((area) => (
+                  <div
+                    key={area}
+                    onClick={() => toggleImprovement(area)}
+                    className={`p-2 rounded border cursor-pointer text-sm ${
+                      selectedImprovements.includes(area)
+                        ? 'bg-orange-100 border-orange-300 text-orange-800'
+                        : 'hover:bg-muted'
+                    }`}
+                  >
+                    {area}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Trainer Notes (optional)</Label>
+              <Textarea
+                placeholder="Add any additional notes about the training session..."
+                value={trainerNotes}
+                onChange={(e) => setTrainerNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleComplete} disabled={completeMutation.isPending}>
+              {completeMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Completing...
+                </>
+              ) : (
+                'Complete Training'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

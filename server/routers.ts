@@ -899,6 +899,238 @@ export const appRouter = router({
       return stats;
     }),
   }),
+
+  // ============ TRAINING ============
+  training: router({
+    // Admin: Create a new training session
+    create: adminProcedure
+      .input(z.object({
+        trainerId: z.number(),
+        traineeId: z.number(),
+        date: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const sessionId = await db.createTrainingSession(
+          input.trainerId,
+          input.traineeId,
+          input.date
+        );
+        return { success: true, sessionId };
+      }),
+
+    // Admin: List all training sessions
+    list: adminProcedure
+      .input(z.object({
+        trainerId: z.number().optional(),
+        traineeId: z.number().optional(),
+        status: z.enum(['scheduled', 'in-progress', 'completed', 'cancelled']).optional(),
+        limit: z.number().min(1).max(100).default(50),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getTrainingSessions(input);
+      }),
+
+    // Admin/Driver: Get a specific training session
+    get: publicProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        // Check if admin or driver
+        let isAdmin = false;
+        let driverId: number | null = null;
+        
+        // Check admin auth
+        let adminToken = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+        if (!adminToken) {
+          const authHeader = ctx.req.headers.authorization;
+          if (authHeader?.startsWith('Bearer ')) {
+            adminToken = authHeader.slice(7);
+          }
+        }
+        if (adminToken) {
+          const admin = await db.getAdminBySessionToken(adminToken);
+          if (admin) isAdmin = true;
+        }
+        
+        // Check driver auth
+        const driverToken = getDriverToken(ctx);
+        if (driverToken) {
+          const driver = await db.getDriverBySessionToken(driverToken);
+          if (driver) driverId = driver.id;
+        }
+        
+        if (!isAdmin && !driverId) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Login required' });
+        }
+        
+        const session = await db.getTrainingSession(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Training session not found' });
+        }
+        
+        // Drivers can only view sessions they're part of
+        if (!isAdmin && driverId !== session.trainerId && driverId !== session.traineeId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to view this session' });
+        }
+        
+        return session;
+      }),
+
+    // Admin: Update session status
+    updateStatus: adminProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        status: z.enum(['scheduled', 'in-progress', 'completed', 'cancelled']),
+      }))
+      .mutation(async ({ input }) => {
+        await db.updateTrainingSessionStatus(input.sessionId, input.status);
+        return { success: true };
+      }),
+
+    // Driver/Admin: Update checklist item
+    updateChecklistItem: publicProcedure
+      .input(z.object({
+        itemId: z.number(),
+        isCompleted: z.boolean(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Check if admin or driver
+        let isAdmin = false;
+        let driverId: number | null = null;
+        
+        let adminToken = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+        if (!adminToken) {
+          const authHeader = ctx.req.headers.authorization;
+          if (authHeader?.startsWith('Bearer ')) {
+            adminToken = authHeader.slice(7);
+          }
+        }
+        if (adminToken) {
+          const admin = await db.getAdminBySessionToken(adminToken);
+          if (admin) isAdmin = true;
+        }
+        
+        const driverToken = getDriverToken(ctx);
+        if (driverToken) {
+          const driver = await db.getDriverBySessionToken(driverToken);
+          if (driver) driverId = driver.id;
+        }
+        
+        if (!isAdmin && !driverId) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Login required' });
+        }
+        
+        await db.updateChecklistItem(input.itemId, input.isCompleted, input.notes);
+        return { success: true };
+      }),
+
+    // Driver/Admin: Complete training session with rating
+    complete: publicProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        confidenceRating: z.number().min(1).max(10),
+        improvementAreas: z.array(z.string()),
+        trainerNotes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Check if admin or trainer
+        let isAdmin = false;
+        let driverId: number | null = null;
+        
+        let adminToken = ctx.req.cookies?.[ADMIN_COOKIE_NAME];
+        if (!adminToken) {
+          const authHeader = ctx.req.headers.authorization;
+          if (authHeader?.startsWith('Bearer ')) {
+            adminToken = authHeader.slice(7);
+          }
+        }
+        if (adminToken) {
+          const admin = await db.getAdminBySessionToken(adminToken);
+          if (admin) isAdmin = true;
+        }
+        
+        const driverToken = getDriverToken(ctx);
+        if (driverToken) {
+          const driver = await db.getDriverBySessionToken(driverToken);
+          if (driver) driverId = driver.id;
+        }
+        
+        if (!isAdmin && !driverId) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Login required' });
+        }
+        
+        const session = await db.getTrainingSession(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Training session not found' });
+        }
+        
+        // Only trainer or admin can complete
+        if (!isAdmin && driverId !== session.trainerId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the trainer can complete the session' });
+        }
+        
+        await db.completeTrainingSession(
+          input.sessionId,
+          input.confidenceRating,
+          input.improvementAreas,
+          input.trainerNotes
+        );
+        return { success: true };
+      }),
+
+    // Admin: Get training history for a driver
+    driverHistory: adminProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getDriverTrainingHistory(input.driverId);
+      }),
+
+    // Get checklist template (public - for reference)
+    getChecklistTemplate: publicProcedure.query(() => {
+      return db.TRAINING_CHECKLIST_TEMPLATE;
+    }),
+
+    // Driver: Get my training sessions (as trainer or trainee)
+    mySessions: publicProcedure
+      .input(z.object({
+        role: z.enum(['trainer', 'trainee', 'all']).default('all'),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const token = getDriverToken(ctx);
+        if (!token) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Driver login required' });
+        }
+        
+        const driver = await db.getDriverBySessionToken(token);
+        if (!driver) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid session' });
+        }
+        
+        const role = input?.role || 'all';
+        
+        if (role === 'trainer') {
+          return db.getTrainingSessions({ trainerId: driver.id });
+        } else if (role === 'trainee') {
+          return db.getTrainingSessions({ traineeId: driver.id });
+        } else {
+          // Get both
+          const asTrainer = await db.getTrainingSessions({ trainerId: driver.id });
+          const asTrainee = await db.getTrainingSessions({ traineeId: driver.id });
+          
+          // Combine and sort by date
+          const all = [...asTrainer, ...asTrainee];
+          all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          return all;
+        }
+      }),
+
+    // Get progress for a session
+    getProgress: publicProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getTrainingProgress(input.sessionId);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

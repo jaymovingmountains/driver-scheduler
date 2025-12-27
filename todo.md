@@ -191,3 +191,12 @@
 ## Admin Reminder Trigger UI
 - [x] Add button to admin dashboard to manually trigger availability reminders
 - [x] Show results of reminder job (how many sent, failed)
+
+## Training Route Feature
+- [x] Create database schema for training sessions and checklist items
+- [x] Create training checklist templates (MML Yard, Warehouse, On-Road)
+- [x] Implement backend procedures for training management
+- [x] Add admin UI to assign training routes and view progress
+- [x] Add driver UI to complete training checklists
+- [x] Add confidence rating (1-10) and improvement areas
+- [x] Add training history and completion tracking (52 tests passing)

@@ -181,3 +181,51 @@ export const availabilityReminders = mysqlTable("availability_reminders", {
 
 export type AvailabilityReminder = typeof availabilityReminders.$inferSelect;
 export type InsertAvailabilityReminder = typeof availabilityReminders.$inferInsert;
+
+
+/**
+ * Training sessions - tracks training sessions between trainers and trainees
+ */
+export const trainingSessions = mysqlTable("training_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  trainerId: int("trainerId").notNull(), // The experienced driver doing the training
+  traineeId: int("traineeId").notNull(), // The new hire being trained
+  date: date("date").notNull(),
+  status: mysqlEnum("status", ["scheduled", "in-progress", "completed", "cancelled"]).default("scheduled").notNull(),
+  confidenceRating: int("confidenceRating"), // 1-10 rating
+  improvementAreas: text("improvementAreas"), // JSON array of improvement areas
+  trainerNotes: text("trainerNotes"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TrainingSession = typeof trainingSessions.$inferSelect;
+export type InsertTrainingSession = typeof trainingSessions.$inferInsert;
+
+/**
+ * Training checklist items - individual checklist items for training
+ */
+export const trainingChecklistItems = mysqlTable("training_checklist_items", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),
+  category: mysqlEnum("category", [
+    "mml-yard",
+    "warehouse",
+    "on-road-delivery",
+    "on-road-apartments",
+    "on-road-businesses",
+    "on-road-first-attempts",
+    "on-road-pickups"
+  ]).notNull(),
+  itemKey: varchar("itemKey", { length: 100 }).notNull(), // Unique key for the checklist item
+  itemLabel: varchar("itemLabel", { length: 255 }).notNull(), // Display label
+  isCompleted: boolean("isCompleted").default(false).notNull(),
+  completedAt: timestamp("completedAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TrainingChecklistItem = typeof trainingChecklistItems.$inferSelect;
+export type InsertTrainingChecklistItem = typeof trainingChecklistItems.$inferInsert;

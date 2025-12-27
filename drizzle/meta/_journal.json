@@ -43,6 +43,13 @@
       "when": 1766789396128,
       "tag": "0005_romantic_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1766793389540,
+      "tag": "0006_windy_santa_claus",
+      "breakpoints": true
     }
   ]
 }
