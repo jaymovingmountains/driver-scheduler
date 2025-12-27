@@ -234,3 +234,6 @@
 - [x] Update company name to "1381003 BC LTD dba Moving Mountains Logistics"
 - [x] Include all key sections from the actual contract (Recitals, Definitions, 10 Articles)
 - [x] Test updated agreement displays correctly
+
+## Agreement UI Update
+- [x] Remove warning box about seeking legal advice from agreement

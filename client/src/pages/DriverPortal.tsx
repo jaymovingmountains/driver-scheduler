@@ -1445,16 +1445,7 @@ function DriverAgreement({ driverName }: { driverName: string }) {
               <p className="text-center mb-1"><strong>AND</strong></p>
               <p className="text-center mb-6">(the "Contractor")</p>
 
-              <div className="bg-amber-50 border border-amber-300 p-4 mb-6 rounded text-center">
-                <p className="font-bold text-sm">
-                  THIS AGREEMENT CONTAINS IMPORTANT PROVISIONS REGARDING COMPENSATION, LIABILITY, INDEMNIFICATION, ARBITRATION, AND DISPUTE RESOLUTION.
-                </p>
-                <p className="font-bold text-sm mt-2">
-                  THE CONTRACTOR IS ADVISED TO READ THIS AGREEMENT CAREFULLY AND SEEK INDEPENDENT LEGAL ADVICE BEFORE SIGNING.
-                </p>
-              </div>
 
-              <hr className="my-6" />
 
               <h2 className="text-lg font-bold mb-4">RECITALS</h2>
               
