@@ -3597,12 +3597,13 @@ function AgreementsPage() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Signed Date</TableHead>
+                <TableHead>Last Reminder Sent</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredDrivers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No drivers found
                   </TableCell>
                 </TableRow>
@@ -3661,6 +3662,21 @@ function AgreementsPage() {
                         </span>
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {driver.lastReminderSent ? (
+                        <span className="text-sm">
+                          {new Date(driver.lastReminderSent).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Never</span>
                       )}
                     </TableCell>
                   </TableRow>

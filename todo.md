@@ -222,3 +222,6 @@
 
 ## Bug Fix - Agreement Reminder Emails
 - [x] Remove automatic scheduler for agreement reminders (only admin-triggered)
+
+## Agreement Table Enhancement
+- [x] Add last reminder sent timestamp to admin agreements table

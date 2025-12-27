@@ -1315,21 +1315,32 @@ export async function markAgreementEmailSent(driverId: number): Promise<void> {
 }
 
 /**
- * Get all drivers with their agreement status
+ * Get all drivers with their agreement status and last reminder sent
  */
-export async function getDriversWithAgreementStatus(): Promise<Array<Driver & { hasSigned: boolean; signedAt: Date | null }>> {
+export async function getDriversWithAgreementStatus(): Promise<Array<Driver & { hasSigned: boolean; signedAt: Date | null; lastReminderSent: Date | null }>> {
   const db = await getDb();
   if (!db) return [];
   
   const allDrivers = await db.select().from(drivers).where(eq(drivers.status, 'active'));
   const allAgreements = await db.select().from(driverAgreements);
+  const allReminders = await db.select().from(agreementReminders);
   
   const agreementMap = new Map(allAgreements.map(a => [a.driverId, a]));
+  
+  // Get the most recent reminder for each driver
+  const reminderMap = new Map<number, Date>();
+  for (const reminder of allReminders) {
+    const existing = reminderMap.get(reminder.driverId);
+    if (!existing || reminder.sentAt > existing) {
+      reminderMap.set(reminder.driverId, reminder.sentAt);
+    }
+  }
   
   return allDrivers.map(driver => ({
     ...driver,
     hasSigned: agreementMap.has(driver.id),
     signedAt: agreementMap.get(driver.id)?.signedAt || null,
+    lastReminderSent: reminderMap.get(driver.id) || null,
   }));
 }
 
