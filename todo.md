@@ -241,3 +241,8 @@
 ## Agreement Signing Notifications
 - [x] Send confirmation email to driver when they sign (already implemented)
 - [x] Send notification email to admin when a driver signs the agreement
+
+## Mobile-Friendly Driver Portal
+- [x] Add hamburger menu for mobile screens
+- [x] Create sidebar navigation for mobile view
+- [x] Ensure all tabs are accessible on small screens

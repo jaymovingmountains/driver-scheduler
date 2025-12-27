@@ -32,6 +32,7 @@ import {
   GraduationCap,
   Loader2,
   LogOut,
+  Menu,
   Phone,
   Route,
   Save,
@@ -232,6 +233,7 @@ function DriverLogin({ onSuccess }: { onSuccess: () => void }) {
 // Driver Dashboard Component
 function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<"routes" | "availability" | "training" | "agreement">("routes");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Check agreement status
   const { data: agreementStatus } = trpc.agreement.getStatus.useQuery();
@@ -245,79 +247,152 @@ function DriverDashboard({ driver, onLogout }: { driver: any; onLogout: () => vo
     },
   });
 
+  const tabs = [
+    { id: "routes" as const, label: "My Routes", icon: Route },
+    { id: "availability" as const, label: "Availability", icon: Calendar },
+    { id: "training" as const, label: "Training", icon: GraduationCap },
+    { id: "agreement" as const, label: "Agreement", icon: FileSignature, showBadge: !agreementStatus?.hasSigned },
+  ];
+
+  const handleTabChange = (tabId: typeof activeTab) => {
+    setActiveTab(tabId);
+    setMobileMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Mobile Sidebar Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Sidebar */}
+      <div className={`fixed top-0 left-0 h-full w-64 bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+        mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Truck className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="font-semibold text-sm">{driver.name}</h1>
+                <p className="text-xs text-muted-foreground">{driver.phone}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        <nav className="p-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors relative ${
+                activeTab === tab.id
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+              }`}
+            >
+              <tab.icon className="h-5 w-5" />
+              {tab.label}
+              {tab.showBadge && (
+                <span className="absolute top-2 left-8 h-2 w-2 bg-red-500 rounded-full" />
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start" 
+            onClick={() => logoutMutation.mutate()}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
+        </div>
+      </div>
+
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="container max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
+            {/* Mobile Menu Button */}
+            <button 
+              onClick={() => setMobileMenuOpen(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg md:hidden"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="p-2 bg-primary/10 rounded-lg hidden md:block">
               <Truck className="h-5 w-5 text-primary" />
             </div>
             <div>
               <h1 className="font-semibold">{driver.name}</h1>
-              <p className="text-xs text-muted-foreground">{driver.phone}</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">{driver.phone}</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => logoutMutation.mutate()}>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => logoutMutation.mutate()}
+            className="hidden md:flex"
+          >
             <LogOut className="h-4 w-4 mr-2" />
             Sign Out
           </Button>
         </div>
       </header>
 
-      {/* Tab Navigation */}
-      <div className="bg-white border-b">
+      {/* Tab Navigation - Desktop Only */}
+      <div className="bg-white border-b hidden md:block">
         <div className="container max-w-4xl mx-auto px-4">
           <nav className="flex gap-4">
-            <button
-              onClick={() => setActiveTab("routes")}
-              className={`py-3 px-1 border-b-2 transition-colors ${
-                activeTab === "routes"
-                  ? "border-primary text-primary font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Route className="h-4 w-4 inline mr-2" />
-              My Routes
-            </button>
-            <button
-              onClick={() => setActiveTab("availability")}
-              className={`py-3 px-1 border-b-2 transition-colors ${
-                activeTab === "availability"
-                  ? "border-primary text-primary font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Calendar className="h-4 w-4 inline mr-2" />
-              Availability
-            </button>
-            <button
-              onClick={() => setActiveTab("training")}
-              className={`py-3 px-1 border-b-2 transition-colors ${
-                activeTab === "training"
-                  ? "border-primary text-primary font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <GraduationCap className="h-4 w-4 inline mr-2" />
-              Training
-            </button>
-            <button
-              onClick={() => setActiveTab("agreement")}
-              className={`py-3 px-1 border-b-2 transition-colors relative ${
-                activeTab === "agreement"
-                  ? "border-primary text-primary font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <FileSignature className="h-4 w-4 inline mr-2" />
-              Agreement
-              {!agreementStatus?.hasSigned && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 bg-red-500 rounded-full" />
-              )}
-            </button>
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-3 px-1 border-b-2 transition-colors relative ${
+                  activeTab === tab.id
+                    ? "border-primary text-primary font-medium"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <tab.icon className="h-4 w-4 inline mr-2" />
+                {tab.label}
+                {tab.showBadge && (
+                  <span className="absolute -top-1 -right-1 h-2 w-2 bg-red-500 rounded-full" />
+                )}
+              </button>
+            ))}
           </nav>
+        </div>
+      </div>
+
+      {/* Mobile Tab Indicator */}
+      <div className="bg-white border-b px-4 py-2 md:hidden">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {tabs.find(t => t.id === activeTab)?.icon && (
+            <span className="text-primary">
+              {(() => {
+                const Icon = tabs.find(t => t.id === activeTab)?.icon;
+                return Icon ? <Icon className="h-4 w-4" /> : null;
+              })()}
+            </span>
+          )}
+          <span className="font-medium text-foreground">
+            {tabs.find(t => t.id === activeTab)?.label}
+          </span>
         </div>
       </div>
 
