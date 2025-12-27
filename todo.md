@@ -200,3 +200,11 @@
 - [x] Add driver UI to complete training checklists
 - [x] Add confidence rating (1-10) and improvement areas
 - [x] Add training history and completion tracking (52 tests passing)
+
+## Training Analytics Dashboard
+- [x] Add backend procedure to calculate training statistics
+- [x] Calculate average confidence scores (overall and per trainer)
+- [x] Aggregate common improvement areas across all sessions
+- [x] Track training completion rates
+- [x] Create admin UI dashboard with charts and metrics
+- [x] Add time-based filtering (last 30 days, 90 days, all time)

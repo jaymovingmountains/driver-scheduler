@@ -10,6 +10,8 @@ vi.mock('./db', () => ({
   updateChecklistItem: vi.fn(),
   getDriverTrainingHistory: vi.fn(),
   getTrainingProgress: vi.fn(),
+  getTrainingAnalytics: vi.fn(),
+  getConfidenceDistribution: vi.fn(),
   TRAINING_CHECKLIST_TEMPLATE: {
     'mml-yard': [
       { key: 'key-location', label: 'Where to get the keys' },
@@ -214,6 +216,74 @@ describe('Training Feature', () => {
       expect(yardItems.length).toBeGreaterThan(0);
       expect(yardItems[0]).toHaveProperty('key');
       expect(yardItems[0]).toHaveProperty('label');
+    });
+  });
+
+  describe('getTrainingAnalytics', () => {
+    it('should return analytics with all required fields', async () => {
+      const mockAnalytics = {
+        totalSessions: 10,
+        completedSessions: 5,
+        inProgressSessions: 3,
+        scheduledSessions: 2,
+        averageConfidenceScore: 7.5,
+        improvementAreas: [{ area: 'Time management', count: 3 }],
+        trainerStats: [{ trainerId: 1, trainerName: 'John', sessionsCompleted: 5, averageRating: 8.0 }],
+        monthlyTrend: [{ month: 'Dec 24', completed: 2, avgScore: 7.5 }],
+      };
+      vi.mocked(db.getTrainingAnalytics).mockResolvedValue(mockAnalytics);
+
+      const result = await db.getTrainingAnalytics();
+
+      expect(result).toHaveProperty('totalSessions');
+      expect(result).toHaveProperty('completedSessions');
+      expect(result).toHaveProperty('averageConfidenceScore');
+      expect(result).toHaveProperty('improvementAreas');
+      expect(result).toHaveProperty('trainerStats');
+      expect(result).toHaveProperty('monthlyTrend');
+    });
+
+    it('should filter by date range', async () => {
+      const mockAnalytics = {
+        totalSessions: 3,
+        completedSessions: 2,
+        inProgressSessions: 1,
+        scheduledSessions: 0,
+        averageConfidenceScore: 8.0,
+        improvementAreas: [],
+        trainerStats: [],
+        monthlyTrend: [],
+      };
+      vi.mocked(db.getTrainingAnalytics).mockResolvedValue(mockAnalytics);
+
+      const result = await db.getTrainingAnalytics({ startDate: '2024-12-01' });
+
+      expect(db.getTrainingAnalytics).toHaveBeenCalledWith({ startDate: '2024-12-01' });
+      expect(result.totalSessions).toBe(3);
+    });
+  });
+
+  describe('getConfidenceDistribution', () => {
+    it('should return distribution for scores 1-10', async () => {
+      const mockDistribution = [
+        { score: 1, count: 0 },
+        { score: 2, count: 0 },
+        { score: 3, count: 1 },
+        { score: 4, count: 0 },
+        { score: 5, count: 2 },
+        { score: 6, count: 1 },
+        { score: 7, count: 3 },
+        { score: 8, count: 4 },
+        { score: 9, count: 2 },
+        { score: 10, count: 1 },
+      ];
+      vi.mocked(db.getConfidenceDistribution).mockResolvedValue(mockDistribution);
+
+      const result = await db.getConfidenceDistribution();
+
+      expect(result).toHaveLength(10);
+      expect(result[0]).toHaveProperty('score');
+      expect(result[0]).toHaveProperty('count');
     });
   });
 });

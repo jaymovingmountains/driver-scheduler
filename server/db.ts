@@ -1078,3 +1078,162 @@ export async function getTrainingProgress(sessionId: number) {
   
   return { total, completed, percentage };
 }
+
+
+// ============ TRAINING ANALYTICS HELPERS ============
+
+/**
+ * Get training analytics statistics
+ */
+export async function getTrainingAnalytics(options?: {
+  startDate?: string;
+  endDate?: string;
+}) {
+  const db = await getDb();
+  if (!db) return {
+    totalSessions: 0,
+    completedSessions: 0,
+    inProgressSessions: 0,
+    scheduledSessions: 0,
+    averageConfidenceScore: 0,
+    improvementAreas: [],
+    trainerStats: [],
+    monthlyTrend: [],
+  };
+  
+  const conditions = [];
+  
+  if (options?.startDate) {
+    conditions.push(gte(trainingSessions.date, new Date(options.startDate)));
+  }
+  if (options?.endDate) {
+    conditions.push(lte(trainingSessions.date, new Date(options.endDate)));
+  }
+  
+  // Get all sessions within date range
+  const sessions = await db.select()
+    .from(trainingSessions)
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
+  
+  // Calculate totals
+  const totalSessions = sessions.length;
+  const completedSessions = sessions.filter(s => s.status === 'completed').length;
+  const inProgressSessions = sessions.filter(s => s.status === 'in-progress').length;
+  const scheduledSessions = sessions.filter(s => s.status === 'scheduled').length;
+  
+  // Calculate average confidence score from completed sessions
+  const completedWithRatings = sessions.filter(s => s.status === 'completed' && s.confidenceRating !== null);
+  const averageConfidenceScore = completedWithRatings.length > 0
+    ? completedWithRatings.reduce((sum, s) => sum + (s.confidenceRating || 0), 0) / completedWithRatings.length
+    : 0;
+  
+  // Aggregate improvement areas
+  const improvementCounts: Record<string, number> = {};
+  sessions.forEach(s => {
+    if (s.improvementAreas) {
+      try {
+        const areas = JSON.parse(s.improvementAreas) as string[];
+        areas.forEach(area => {
+          improvementCounts[area] = (improvementCounts[area] || 0) + 1;
+        });
+      } catch (e) {
+        // Skip invalid JSON
+      }
+    }
+  });
+  
+  const improvementAreas = Object.entries(improvementCounts)
+    .map(([area, count]) => ({ area, count }))
+    .sort((a, b) => b.count - a.count);
+  
+  // Get trainer statistics
+  const trainerCounts: Record<number, { completed: number; totalRating: number; ratingCount: number }> = {};
+  sessions.forEach(s => {
+    if (!trainerCounts[s.trainerId]) {
+      trainerCounts[s.trainerId] = { completed: 0, totalRating: 0, ratingCount: 0 };
+    }
+    if (s.status === 'completed') {
+      trainerCounts[s.trainerId].completed++;
+      if (s.confidenceRating !== null) {
+        trainerCounts[s.trainerId].totalRating += s.confidenceRating;
+        trainerCounts[s.trainerId].ratingCount++;
+      }
+    }
+  });
+  
+  // Get trainer names
+  const trainerIds = Object.keys(trainerCounts).map(Number);
+  const allDrivers = await db.select().from(drivers);
+  const driverMap = new Map(allDrivers.map(d => [d.id, d]));
+  
+  const trainerStats = trainerIds.map(trainerId => {
+    const stats = trainerCounts[trainerId];
+    const driver = driverMap.get(trainerId);
+    return {
+      trainerId,
+      trainerName: driver?.name || 'Unknown',
+      sessionsCompleted: stats.completed,
+      averageRating: stats.ratingCount > 0 
+        ? Math.round((stats.totalRating / stats.ratingCount) * 10) / 10 
+        : 0,
+    };
+  }).sort((a, b) => b.sessionsCompleted - a.sessionsCompleted);
+  
+  // Calculate monthly trend (last 6 months)
+  const monthlyTrend: { month: string; completed: number; avgScore: number }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+    const monthName = monthStart.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    
+    const monthSessions = sessions.filter(s => {
+      const sessionDate = new Date(s.date);
+      return sessionDate >= monthStart && sessionDate <= monthEnd && s.status === 'completed';
+    });
+    
+    const monthAvg = monthSessions.length > 0
+      ? monthSessions.reduce((sum, s) => sum + (s.confidenceRating || 0), 0) / monthSessions.length
+      : 0;
+    
+    monthlyTrend.push({
+      month: monthName,
+      completed: monthSessions.length,
+      avgScore: Math.round(monthAvg * 10) / 10,
+    });
+  }
+  
+  return {
+    totalSessions,
+    completedSessions,
+    inProgressSessions,
+    scheduledSessions,
+    averageConfidenceScore: Math.round(averageConfidenceScore * 10) / 10,
+    improvementAreas,
+    trainerStats,
+    monthlyTrend,
+  };
+}
+
+/**
+ * Get confidence score distribution
+ */
+export async function getConfidenceDistribution() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const sessions = await db.select()
+    .from(trainingSessions)
+    .where(and(
+      eq(trainingSessions.status, 'completed'),
+      sql`${trainingSessions.confidenceRating} IS NOT NULL`
+    ));
+  
+  // Count scores 1-10
+  const distribution = Array.from({ length: 10 }, (_, i) => ({
+    score: i + 1,
+    count: sessions.filter(s => s.confidenceRating === i + 1).length,
+  }));
+  
+  return distribution;
+}

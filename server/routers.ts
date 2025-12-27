@@ -1130,6 +1130,22 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return db.getTrainingProgress(input.sessionId);
       }),
+
+    // Admin: Get training analytics
+    analytics: adminProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getTrainingAnalytics(input);
+      }),
+
+    // Admin: Get confidence score distribution
+    confidenceDistribution: adminProcedure
+      .query(async () => {
+        return db.getConfidenceDistribution();
+      }),
   }),
 });
 

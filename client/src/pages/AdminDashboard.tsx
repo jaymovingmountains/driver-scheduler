@@ -2609,6 +2609,7 @@ const IMPROVEMENT_AREAS = [
 // Training Page Component
 function TrainingPage() {
   const [, navigate] = useLocation();
+  const [activeTab, setActiveTab] = useState<'sessions' | 'analytics'>('sessions');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<string>('');
   const [selectedTrainee, setSelectedTrainee] = useState<string>('');
@@ -2671,15 +2672,49 @@ function TrainingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Training Sessions</h1>
-          <p className="text-muted-foreground">Manage driver training for new hires</p>
+          <h1 className="text-2xl font-bold tracking-tight">Training</h1>
+          <p className="text-muted-foreground">Manage driver training and view analytics</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Training Session
-        </Button>
+        {activeTab === 'sessions' && (
+          <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New Training Session
+          </Button>
+        )}
       </div>
 
+      {/* Tab Navigation */}
+      <div className="border-b">
+        <nav className="flex gap-4">
+          <button
+            onClick={() => setActiveTab('sessions')}
+            className={`py-2 px-1 border-b-2 transition-colors ${
+              activeTab === 'sessions'
+                ? 'border-primary text-primary font-medium'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <ClipboardCheck className="h-4 w-4 inline mr-2" />
+            Sessions
+          </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`py-2 px-1 border-b-2 transition-colors ${
+              activeTab === 'analytics'
+                ? 'border-primary text-primary font-medium'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <LayoutDashboard className="h-4 w-4 inline mr-2" />
+            Analytics
+          </button>
+        </nav>
+      </div>
+
+      {activeTab === 'analytics' ? (
+        <TrainingAnalytics />
+      ) : (
+        <>
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -2853,6 +2888,235 @@ function TrainingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Training Analytics Component
+function TrainingAnalytics() {
+  const [dateRange, setDateRange] = useState<'30' | '90' | 'all'>('all');
+  
+  const getDateFilter = () => {
+    if (dateRange === 'all') return {};
+    const days = parseInt(dateRange);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    return { startDate: startDate.toISOString().split('T')[0] };
+  };
+  
+  const { data: analytics, isLoading } = trpc.training.analytics.useQuery(getDateFilter());
+  const { data: distribution } = trpc.training.confidenceDistribution.useQuery();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+  
+  const completionRate = analytics?.totalSessions 
+    ? Math.round((analytics.completedSessions / analytics.totalSessions) * 100) 
+    : 0;
+  
+  return (
+    <div className="space-y-6">
+      {/* Date Range Filter */}
+      <div className="flex gap-2">
+        <Select value={dateRange} onValueChange={(v) => setDateRange(v as any)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Time period" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="30">Last 30 Days</SelectItem>
+            <SelectItem value="90">Last 90 Days</SelectItem>
+            <SelectItem value="all">All Time</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      
+      {/* Overview Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Sessions</CardDescription>
+            <CardTitle className="text-3xl">{analytics?.totalSessions || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Completion Rate</CardDescription>
+            <CardTitle className="text-3xl text-green-600">{completionRate}%</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Avg Confidence Score</CardDescription>
+            <CardTitle className="text-3xl">
+              <div className="flex items-center gap-2">
+                <Star className="h-6 w-6 text-yellow-500 fill-yellow-500" />
+                {analytics?.averageConfidenceScore || 0}/10
+              </div>
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>In Progress</CardDescription>
+            <CardTitle className="text-3xl text-yellow-600">{analytics?.inProgressSessions || 0}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+      
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Confidence Score Distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Confidence Score Distribution</CardTitle>
+            <CardDescription>How trainees are rated by their trainers</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {distribution && distribution.length > 0 ? (
+              <div className="space-y-2">
+                {distribution.map((item: { score: number; count: number }) => {
+                  const maxCount = Math.max(...distribution.map((d: { count: number }) => d.count), 1);
+                  const percentage = (item.count / maxCount) * 100;
+                  return (
+                    <div key={item.score} className="flex items-center gap-3">
+                      <div className="w-8 text-sm font-medium text-right">{item.score}</div>
+                      <div className="flex-1 h-6 bg-muted rounded overflow-hidden">
+                        <div 
+                          className={`h-full transition-all ${
+                            item.score >= 8 ? 'bg-green-500' : 
+                            item.score >= 5 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <div className="w-8 text-sm text-muted-foreground">{item.count}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No completed sessions yet</p>
+            )}
+          </CardContent>
+        </Card>
+        
+        {/* Common Improvement Areas */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Common Improvement Areas</CardTitle>
+            <CardDescription>Most frequently noted areas for trainee development</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analytics?.improvementAreas && analytics.improvementAreas.length > 0 ? (
+              <div className="space-y-3">
+                {analytics.improvementAreas.slice(0, 8).map((item: { area: string; count: number }) => {
+                  const maxCount = analytics.improvementAreas[0]?.count || 1;
+                  const percentage = (item.count / maxCount) * 100;
+                  return (
+                    <div key={item.area} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span>{item.area}</span>
+                        <span className="text-muted-foreground">{item.count} sessions</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded overflow-hidden">
+                        <div 
+                          className="h-full bg-orange-500 transition-all"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No improvement areas recorded yet</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Trainer Leaderboard */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Trainer Performance</CardTitle>
+          <CardDescription>Sessions completed and average trainee ratings by trainer</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {analytics?.trainerStats && analytics.trainerStats.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Trainer</TableHead>
+                  <TableHead className="text-center">Sessions Completed</TableHead>
+                  <TableHead className="text-center">Avg Trainee Rating</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analytics.trainerStats.map((trainer: { trainerId: number; trainerName: string; sessionsCompleted: number; averageRating: number }) => (
+                  <TableRow key={trainer.trainerId}>
+                    <TableCell className="font-medium">{trainer.trainerName}</TableCell>
+                    <TableCell className="text-center">{trainer.sessionsCompleted}</TableCell>
+                    <TableCell className="text-center">
+                      {trainer.averageRating > 0 ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                          {trainer.averageRating}/10
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">No trainer data yet</p>
+          )}
+        </CardContent>
+      </Card>
+      
+      {/* Monthly Trend */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Monthly Training Trend</CardTitle>
+          <CardDescription>Sessions completed and average scores over the last 6 months</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {analytics?.monthlyTrend && analytics.monthlyTrend.length > 0 ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-6 gap-2">
+                {analytics.monthlyTrend.map((month: { month: string; completed: number; avgScore: number }) => (
+                  <div key={month.month} className="text-center">
+                    <div className="text-xs text-muted-foreground mb-2">{month.month}</div>
+                    <div className="h-24 bg-muted rounded relative flex items-end justify-center pb-1">
+                      <div 
+                        className="w-8 bg-primary rounded-t transition-all"
+                        style={{ height: `${Math.max((month.completed / Math.max(...analytics.monthlyTrend.map((m: { completed: number }) => m.completed), 1)) * 100, 5)}%` }}
+                      />
+                    </div>
+                    <div className="text-sm font-medium mt-1">{month.completed}</div>
+                    {month.avgScore > 0 && (
+                      <div className="text-xs text-muted-foreground flex items-center justify-center gap-0.5">
+                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                        {month.avgScore}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">No monthly data yet</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
