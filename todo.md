@@ -237,3 +237,7 @@
 
 ## Agreement UI Update
 - [x] Remove warning box about seeking legal advice from agreement
+
+## Agreement Signing Notifications
+- [x] Send confirmation email to driver when they sign (already implemented)
+- [x] Send notification email to admin when a driver signs the agreement

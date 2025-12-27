@@ -535,3 +535,77 @@ export async function sendAgreementReminderEmail(
 
   return sendEmail({ to: email, subject, html });
 }
+
+
+/**
+ * Notify admin when a driver signs the agreement
+ */
+export async function notifyAdminAgreementSigned(
+  driverName: string,
+  driverEmail: string,
+  driverPhone: string,
+  signedAt: Date
+): Promise<boolean> {
+  const adminEmail = 'jay@movingmountainslogistics.com';
+  
+  const formattedDate = signedAt.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const subject = `Agreement Signed: ${driverName}`;
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #f97316;">
+        <h1 style="color: #f97316; margin: 0; font-size: 28px; font-weight: bold;">MML</h1>
+        <p style="color: #666; margin: 5px 0 0 0;">Moving Mountains Logistics</p>
+      </div>
+      
+      <h2 style="color: #1a1a1a; margin-top: 30px;">New Agreement Signed</h2>
+      
+      <p style="color: #333; line-height: 1.6;">
+        A driver has signed the Independent Contractor Agreement.
+      </p>
+      
+      <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="margin: 0 0 10px 0; color: #166534; font-weight: bold;">
+          ✓ Driver Details
+        </p>
+        <table style="width: 100%; color: #333;">
+          <tr>
+            <td style="padding: 5px 0;"><strong>Name:</strong></td>
+            <td style="padding: 5px 0;">${driverName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;"><strong>Email:</strong></td>
+            <td style="padding: 5px 0;">${driverEmail}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;"><strong>Phone:</strong></td>
+            <td style="padding: 5px 0;">${driverPhone}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;"><strong>Signed At:</strong></td>
+            <td style="padding: 5px 0;">${formattedDate}</td>
+          </tr>
+        </table>
+      </div>
+      
+      <p style="color: #333; line-height: 1.6;">
+        You can view all agreement statuses in the admin dashboard under the Agreements section.
+      </p>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0 20px 0;">
+      <p style="color: #666; font-size: 12px; text-align: center;">
+        Moving Mountains Logistics<br>
+        Driver Scheduling System
+      </p>
+    </div>
+  `;
+
+  return sendEmail({ to: adminEmail, subject, html });
+}

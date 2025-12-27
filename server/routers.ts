@@ -4,7 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
-import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode, sendWeeklyAvailabilitySummary, sendSignedAgreementEmail } from "./notifications";
+import { notifyDriver, notifyRouteAssignment, sendDriverInvitation, sendLoginCode, sendWeeklyAvailabilitySummary, sendSignedAgreementEmail, notifyAdminAgreementSigned } from "./notifications";
 import { runAgreementReminderJob } from "./jobs/agreementReminder";
 import { runAvailabilityReminderJob } from "./jobs/availabilityReminder";
 
@@ -1212,7 +1212,7 @@ export const appRouter = router({
           userAgent,
         });
         
-        // Send confirmation email with signed copy
+        // Send confirmation email with signed copy to driver
         if (driver.email) {
           await sendSignedAgreementEmail(
             driver.email,
@@ -1222,6 +1222,14 @@ export const appRouter = router({
           // Mark email as sent
           await db.markAgreementEmailSent(driver.id);
         }
+        
+        // Notify admin that driver signed the agreement
+        await notifyAdminAgreementSigned(
+          driver.name,
+          driver.email || 'No email',
+          driver.phone,
+          agreement.signedAt
+        );
         
         return { success: true, agreement };
       }),
