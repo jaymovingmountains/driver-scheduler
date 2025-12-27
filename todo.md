@@ -225,3 +225,12 @@
 
 ## Agreement Table Enhancement
 - [x] Add last reminder sent timestamp to admin agreements table
+
+## Bug Fix - Driver Portal Agreement
+- [x] Fix agreement not showing in driver portal Agreement tab (was working correctly - user needed to use full phone format with country code)
+
+## Agreement Content Update
+- [x] Read full contract document and extract all important points
+- [x] Update company name to "1381003 BC LTD dba Moving Mountains Logistics"
+- [x] Include all key sections from the actual contract (Recitals, Definitions, 10 Articles)
+- [x] Test updated agreement displays correctly
