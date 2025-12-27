@@ -219,3 +219,6 @@
 - [x] Send signed agreement confirmation email to driver
 - [x] Implement 6-hour reminder emails for drivers who haven't signed
 - [x] Test the complete agreement workflow (71 tests passing)
+
+## Bug Fix - Agreement Reminder Emails
+- [x] Remove automatic scheduler for agreement reminders (only admin-triggered)
